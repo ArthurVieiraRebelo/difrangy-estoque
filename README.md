@@ -122,3 +122,7 @@ Os limites de estoque baixo (5 unidades e 3 metros) ficam no início de `banco.p
 - Edição e desativação de itens cadastrados
 - Exportação dos relatórios para planilha
 - Backup automático do banco
+
+## Licença
+
+Distribuído sob a licença MIT. Veja o arquivo [LICENSE](LICENSE).
