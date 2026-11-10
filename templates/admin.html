@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block titulo %}Administração{% endblock %}
+
+{% block conteudo %}
+<h1>Administração</h1>
+
+<section class="bloco">
+  <h2>Novo usuário</h2>
+  <form method="post" action="{{ url_for('criar_usuario') }}" class="formulario" autocomplete="off">
+    <label>Nome <input name="nome" required placeholder="ex: Maria Souza"></label>
+    <label>Login <input name="login" required autocapitalize="none" placeholder="ex: maria"></label>
+    <label>Senha inicial <input name="senha" type="password" autocomplete="new-password" required minlength="6"></label>
+    <label>Perfil
+      <select name="perfil">
+        <option value="operador">Operador (bipa e consulta)</option>
+        <option value="admin">Administrador (acesso total)</option>
+      </select>
+    </label>
+    <button type="submit">Criar usuário</button>
+  </form>
+</section>
+
+<section class="bloco">
+  <h2>Usuários ({{ usuarios|length }})</h2>
+  <div class="tabela-rolagem">
+    <table>
+      <thead>
+        <tr><th>Nome</th><th>Login</th><th>Perfil e situação</th><th>Redefinir senha</th></tr>
+      </thead>
+      <tbody>
+        {% for u in usuarios %}
+          <tr class="{{ 'acabou' if not u.ativo }}">
+            <td>{{ u.nome }}{% if u.id == g.usuario.id %} <small>(você)</small>{% endif %}</td>
+            <td class="codigo">{{ u.login }}</td>
+            <td>
+              <form method="post" action="{{ url_for('alterar_usuario', id_usuario=u.id) }}" class="linha-form compacta">
+                <select name="perfil" aria-label="Perfil de {{ u.nome }}">
+                  {% for chave, nome in PERFIS.items() %}
+                    <option value="{{ chave }}" {{ 'selected' if u.perfil == chave }}>{{ nome }}</option>
+                  {% endfor %}
+                </select>
+                <select name="ativo" aria-label="Situação de {{ u.nome }}">
+                  <option value="1" {{ 'selected' if u.ativo }}>Ativo</option>
+                  <option value="0" {{ 'selected' if not u.ativo }}>Desativado</option>
+                </select>
+                <button type="submit" class="secundario">Salvar</button>
+              </form>
+            </td>
+            <td>
+              <form method="post" action="{{ url_for('redefinir_senha', id_usuario=u.id) }}" class="linha-form compacta">
+                <input name="nova_senha" type="password" autocomplete="new-password" minlength="6"
+                       required placeholder="nova senha" aria-label="Nova senha de {{ u.nome }}">
+                <button type="submit" class="secundario">Redefinir</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="bloco">
+  <div class="cabecalho-bloco">
+    <h2>Backups</h2>
+    <form method="post" action="{{ url_for('fazer_backup_agora') }}">
+      <button type="submit">Fazer backup agora</button>
+    </form>
+  </div>
+  <p class="dica">
+    O sistema faz um backup por dia sozinho e guarda os 30 últimos em
+    <code>{{ pasta_backups }}</code>. Copie essa pasta para um pendrive ou para a nuvem
+    de vez em quando: backup no mesmo computador não protege contra HD estragado.
+  </p>
+  <div class="tabela-rolagem">
+    <table>
+      <thead><tr><th>Arquivo</th><th class="num">Tamanho</th><th></th></tr></thead>
+      <tbody>
+        {% for b in backups %}
+          <tr>
+            <td class="codigo">{{ b.nome }}</td>
+            <td class="num">{{ b.tamanho_kb|numero_br(1) }} KB</td>
+            <td class="acoes"><a href="{{ url_for('baixar_backup', nome=b.nome) }}">Baixar</a></td>
+          </tr>
+        {% else %}
+          <tr class="vazio"><td colspan="3">Nenhum backup ainda.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

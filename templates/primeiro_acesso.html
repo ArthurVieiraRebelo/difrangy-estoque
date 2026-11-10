@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block titulo %}Primeiro acesso{% endblock %}
+
+{% block conteudo %}
+<section class="bloco caixa-estreita">
+  <h1>Primeiro acesso</h1>
+  <p class="dica">
+    Ainda não existe nenhum usuário. Crie a conta do <strong>administrador</strong>:
+    ele cadastra os itens e os outros funcionários.
+  </p>
+  <form method="post" class="formulario-coluna" autocomplete="off">
+    <label>Nome
+      <input name="nome" required autofocus value="{{ request.form.get('nome', '') }}">
+    </label>
+    <label>Login <small>(letras minúsculas, sem espaço)</small>
+      <input name="login" autocapitalize="none" required value="{{ request.form.get('login', '') }}">
+    </label>
+    <label>Senha <small>(mínimo 6 caracteres)</small>
+      <input name="senha" type="password" autocomplete="new-password" required minlength="6">
+    </label>
+    <label>Repita a senha
+      <input name="confirmacao" type="password" autocomplete="new-password" required minlength="6">
+    </label>
+    <button type="submit">Criar administrador</button>
+  </form>
+</section>
+{% endblock %}
