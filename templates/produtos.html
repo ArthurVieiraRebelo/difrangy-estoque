@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block titulo %}Pijamas{% endblock %}
+
+{% block conteudo %}
+<h1>Pijamas</h1>
+
+<section class="bloco">
+  <h2>Cadastrar pijama</h2>
+  <p class="dica">Cada combinação de <strong>modelo + tamanho + cor</strong> é um item com seu próprio código de barras.</p>
+
+  {# method="post": envia para a mesma rota /produtos, que trata o POST em app.py #}
+  <form method="post" class="formulario" autocomplete="off">
+    <label>Modelo
+      <input name="modelo" list="lista-modelos" required value="{{ formulario.get('modelo', '') }}" placeholder="ex: Floral">
+    </label>
+    <label>Tamanho
+      <input name="tamanho" list="lista-tamanhos" required value="{{ formulario.get('tamanho', '') }}" placeholder="ex: M">
+    </label>
+    <label>Cor
+      <input name="cor" list="lista-cores" required value="{{ formulario.get('cor', '') }}" placeholder="ex: Azul">
+    </label>
+    <label>Quantidade inicial
+      <input name="quantidade" type="number" min="0" step="1" value="{{ formulario.get('quantidade', '0') }}">
+    </label>
+    <label>Código <small>(opcional)</small>
+      <input name="codigo" value="{{ formulario.get('codigo', '') }}" placeholder="automático: PJ-FLO-M-AZ">
+    </label>
+    <button type="submit">Cadastrar e gerar etiqueta</button>
+  </form>
+
+  {# <datalist> = sugestões que aparecem ao digitar, evitando "Floral" e "floral" diferentes #}
+  <datalist id="lista-modelos">{% for m in modelos %}<option value="{{ m }}">{% endfor %}</datalist>
+  <datalist id="lista-cores">{% for c in cores %}<option value="{{ c }}">{% endfor %}</datalist>
+  <datalist id="lista-tamanhos">
+    {% for t in ['PP', 'P', 'M', 'G', 'GG', 'XG'] %}<option value="{{ t }}">{% endfor %}
+  </datalist>
+</section>
+
+<section class="bloco">
+  <h2>Pijamas cadastrados ({{ produtos|length }})</h2>
+  <div class="tabela-rolagem">
+    <table>
+      <thead>
+        <tr><th>Código</th><th>Modelo</th><th>Tam.</th><th>Cor</th><th class="num">Qtd.</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for p in produtos %}
+          <tr>
+            <td class="codigo">{{ p.codigo }}</td>
+            <td>{{ p.modelo }}</td>
+            <td>{{ p.tamanho }}</td>
+            <td>{{ p.cor }}</td>
+            <td class="num">{{ p.quantidade }}</td>
+            <td class="acoes">
+              <a href="{{ url_for('etiqueta', codigo=p.codigo) }}">Etiqueta</a>
+              <a href="{{ url_for('movimentacoes', codigo=p.codigo) }}">Histórico</a>
+            </td>
+          </tr>
+        {% else %}
+          <tr class="vazio"><td colspan="6">Nenhum pijama cadastrado ainda.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

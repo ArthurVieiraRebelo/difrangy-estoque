@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block titulo %}Relatórios{% endblock %}
+
+{% block conteudo %}
+<h1>Relatórios</h1>
+
+<div class="grade-2">
+  <section class="bloco">
+    <h2>Pijamas com estoque baixo <small>(até {{ limite_pijamas }} un.)</small></h2>
+    <div class="tabela-rolagem">
+      <table>
+        <thead><tr><th>Código</th><th>Modelo</th><th>Tam.</th><th>Cor</th><th class="num">Qtd.</th></tr></thead>
+        <tbody>
+          {% for p in pijamas_baixos %}
+            <tr class="baixo">
+              <td class="codigo">{{ p.codigo }}</td><td>{{ p.modelo }}</td><td>{{ p.tamanho }}</td>
+              <td>{{ p.cor }}</td><td class="num">{{ p.quantidade }}</td>
+            </tr>
+          {% else %}
+            <tr class="vazio"><td colspan="5">Nenhum pijama com estoque baixo. 👍</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="bloco">
+    <h2>Rolos quase acabando <small>(até {{ limite_metros|numero_br }} m)</small></h2>
+    <div class="tabela-rolagem">
+      <table>
+        <thead><tr><th>Código</th><th>Tecido</th><th>Cor</th><th class="num">Metros</th></tr></thead>
+        <tbody>
+          {% for r in rolos_acabando %}
+            <tr class="baixo">
+              <td class="codigo">{{ r.codigo }}</td><td>{{ r.tipo_tecido }}</td><td>{{ r.cor }}</td>
+              <td class="num">{{ r.metragem_atual|numero_br(2) }}</td>
+            </tr>
+          {% else %}
+            <tr class="vazio"><td colspan="4">Nenhum rolo quase acabando.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<div class="grade-2">
+  <section class="bloco">
+    <h2>Consumo de tecido por mês <small>(cortes)</small></h2>
+    <div class="tabela-rolagem">
+      <table>
+        <thead><tr><th>Mês</th><th>Tecido</th><th>Cor</th><th class="num">Metros</th></tr></thead>
+        <tbody>
+          {% for c in consumo_tecido %}
+            <tr>
+              <td>{{ c.mes|mes_br }}</td><td>{{ c.tipo_tecido }}</td><td>{{ c.cor }}</td>
+              <td class="num">{{ c.metros|numero_br(2) }}</td>
+            </tr>
+          {% else %}
+            <tr class="vazio"><td colspan="4">Nenhum corte registrado ainda.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="bloco">
+    <h2>Pijamas vendidos por mês</h2>
+    <div class="tabela-rolagem">
+      <table>
+        <thead><tr><th>Mês</th><th>Modelo</th><th class="num">Unidades</th></tr></thead>
+        <tbody>
+          {% for v in vendas %}
+            <tr><td>{{ v.mes|mes_br }}</td><td>{{ v.modelo }}</td><td class="num">{{ v.unidades }}</td></tr>
+          {% else %}
+            <tr class="vazio"><td colspan="3">Nenhuma venda registrada ainda.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}

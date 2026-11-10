@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titulo %}Estoque{% endblock %} · Difrangy</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/estilo.css') }}">
+</head>
+<body>
+  {# request.endpoint = nome da função da rota atual. Usamos para marcar o menu ativo. #}
+  {% set pagina = request.endpoint %}
+  <header class="topo">
+    <a class="marca" href="{{ url_for('painel') }}">Difrangy <span>Estoque</span></a>
+    <nav class="menu">
+      <a href="{{ url_for('painel') }}" class="{{ 'ativo' if pagina == 'painel' }}">Painel</a>
+      <a href="{{ url_for('bipar') }}" class="{{ 'ativo' if pagina == 'bipar' }}">Bipar</a>
+      <a href="{{ url_for('produtos') }}" class="{{ 'ativo' if pagina == 'produtos' }}">Pijamas</a>
+      <a href="{{ url_for('rolos') }}" class="{{ 'ativo' if pagina == 'rolos' }}">Tecidos</a>
+      <a href="{{ url_for('movimentacoes') }}" class="{{ 'ativo' if pagina == 'movimentacoes' }}">Movimentações</a>
+      <a href="{{ url_for('relatorios') }}" class="{{ 'ativo' if pagina == 'relatorios' }}">Relatórios</a>
+    </nav>
+  </header>
+
+  <main class="conteudo">
+    {# Mensagens do flash() (sucesso/erro) aparecem aqui, em qualquer página #}
+    {% with mensagens = get_flashed_messages(with_categories=true) %}
+      {% for categoria, mensagem in mensagens %}
+        <div class="aviso aviso-{{ categoria }}">{{ mensagem }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    {% block conteudo %}{% endblock %}
+  </main>
+
+  {# Dicionário de motivos disponível para o JavaScript de qualquer página #}
+  <script>const MOTIVOS = {{ MOTIVOS|tojson }};</script>
+  <script src="{{ url_for('static', filename='js/comum.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

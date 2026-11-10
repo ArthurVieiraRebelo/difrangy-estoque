@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block titulo %}Painel{% endblock %}
+
+{% block conteudo %}
+<div class="cabecalho-pagina">
+  <h1>Painel do estoque</h1>
+  {# O painel.js escreve aqui a hora da última atualização (ou o aviso de erro) #}
+  <span id="status-atualizacao" class="status" role="status">Carregando…</span>
+</div>
+
+<section class="cartoes">
+  <div class="cartao">
+    <span class="cartao-rotulo">Pijamas em estoque</span>
+    <strong id="total-pijamas">–</strong>
+    <small id="total-skus"></small>
+  </div>
+  <div class="cartao">
+    <span class="cartao-rotulo">Tecido disponível</span>
+    <strong id="total-metros">–</strong>
+    <small id="total-rolos"></small>
+  </div>
+  <div class="cartao">
+    <span class="cartao-rotulo">Itens com estoque baixo</span>
+    <strong id="total-baixos">–</strong>
+    <small><a href="{{ url_for('relatorios') }}">ver relatório</a></small>
+  </div>
+</section>
+
+<div class="grade-2">
+  <section class="bloco">
+    <h2>Pijamas</h2>
+    <div class="tabela-rolagem">
+      <table>
+        <thead>
+          <tr><th>Código</th><th>Modelo</th><th>Tam.</th><th>Cor</th><th class="num">Qtd.</th></tr>
+        </thead>
+        <tbody id="tabela-produtos"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="bloco">
+    <h2>Rolos de tecido</h2>
+    <div class="tabela-rolagem">
+      <table>
+        <thead>
+          <tr><th>Código</th><th>Tecido</th><th>Cor</th><th class="num">Metros</th></tr>
+        </thead>
+        <tbody id="tabela-rolos"></tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<section class="bloco">
+  <h2>Últimas movimentações</h2>
+  <div class="tabela-rolagem">
+    <table>
+      <thead>
+        <tr><th>Data/hora</th><th>Código</th><th>Item</th><th>Operação</th><th class="num">Qtd.</th><th>Motivo</th></tr>
+      </thead>
+      <tbody id="tabela-movimentacoes"></tbody>
+    </table>
+  </div>
+  <p><a href="{{ url_for('movimentacoes') }}">Ver histórico completo →</a></p>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/painel.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block titulo %}Movimentações{% endblock %}
+
+{% block conteudo %}
+<h1>Movimentações</h1>
+
+<section class="bloco">
+  {# method="get": o filtro vai na URL (?codigo=...), então dá para salvar/compartilhar o link #}
+  <form method="get" class="linha-form" autocomplete="off">
+    <label>Filtrar por código
+      <input name="codigo" value="{{ codigo }}" placeholder="bipe ou digite um código">
+    </label>
+    <button type="submit">Filtrar</button>
+    {% if codigo %}<a href="{{ url_for('movimentacoes') }}">Limpar filtro</a>{% endif %}
+  </form>
+</section>
+
+<section class="bloco">
+  <h2>
+    {% if codigo %}Histórico de {{ codigo }}{% else %}Últimas {{ movimentacoes|length }} movimentações{% endif %}
+  </h2>
+  <div class="tabela-rolagem">
+    <table>
+      <thead>
+        <tr><th>Data/hora</th><th>Código</th><th>Item</th><th>Operação</th><th class="num">Qtd.</th><th>Motivo</th></tr>
+      </thead>
+      <tbody>
+        {% for m in movimentacoes %}
+          <tr>
+            <td>{{ m.data|data_br }}</td>
+            <td class="codigo">{{ m.codigo_item }}</td>
+            <td>{{ m.descricao or '—' }}</td>
+            <td><span class="selo selo-{{ m.tipo }}">{{ 'Entrada' if m.tipo == 'entrada' else 'Saída' }}</span></td>
+            <td class="num">
+              {% if m.tipo_item == 'rolo' %}{{ m.quantidade|numero_br(2) }} m{% else %}{{ m.quantidade|numero_br }} un.{% endif %}
+            </td>
+            <td>{{ MOTIVOS.get(m.motivo, m.motivo) }}</td>
+          </tr>
+        {% else %}
+          <tr class="vazio"><td colspan="6">Nenhuma movimentação encontrada.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

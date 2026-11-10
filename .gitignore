@@ -1,0 +1,11 @@
+# Ambiente virtual (bibliotecas instaladas) — cada computador cria o seu
+.venv/
+
+# Banco de dados: contém o estoque real, não vai para o repositório
+estoque.db
+estoque.db-wal
+estoque.db-shm
+
+# Arquivos gerados pelo Python
+__pycache__/
+*.pyc
