@@ -15,6 +15,20 @@ function buscarComTempoLimite(url, opcoes = {}) {
 }
 
 /**
+ * Se o servidor respondeu 401 ("não está logado" — o login de 12 h acabou),
+ * manda o funcionário para a tela de login. Depois de entrar, ele volta
+ * para a página onde estava (parâmetro "proximo").
+ */
+function irParaLoginSeSessaoExpirou(resposta) {
+  if (resposta.status === 401) {
+    const paginaAtual = window.location.pathname + window.location.search;
+    window.location.href = "/login?proximo=" + encodeURIComponent(paginaAtual);
+    return true;
+  }
+  return false;
+}
+
+/**
  * Chama uma rota da API e devolve o JSON da resposta.
  * Nunca "quebra" a página: em caso de problema devolve { ok: false, erro: "..." }
  * com uma mensagem que diz O QUE deu errado (rede ou servidor).
@@ -25,6 +39,9 @@ async function chamarApi(url, opcoes) {
     resposta = await buscarComTempoLimite(url, opcoes);
   } catch {
     return { ok: false, erro: "Sem conexão com o servidor. Verifique a rede e tente de novo." };
+  }
+  if (irParaLoginSeSessaoExpirou(resposta)) {
+    return { ok: false, erro: "Sua sessão expirou. Abrindo a tela de login…" };
   }
   try {
     return await resposta.json();

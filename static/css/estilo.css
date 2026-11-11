@@ -60,6 +60,20 @@ h2 small { color: var(--texto-suave); font-weight: normal; font-size: .85rem; }
 .menu a:hover { background: var(--destaque-escuro); opacity: 1; }
 .menu a.ativo { background: var(--destaque-escuro); opacity: 1; font-weight: 600; }
 
+/* Nome do usuário logado + botão Sair, no canto direito do topo */
+.usuario-logado { margin-left: auto; display: flex; align-items: center; gap: .75rem; }
+.usuario-logado a { color: #fff; text-decoration: none; }
+.usuario-logado a:hover { text-decoration: underline; }
+.usuario-logado small { opacity: .75; }
+.usuario-logado form { margin: 0; }
+.botao-link {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, .5);
+  padding: .3rem .75rem;
+  font-weight: 600;
+}
+.botao-link:hover { background: var(--destaque-escuro); }
+
 .conteudo { max-width: 1200px; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
 
 /* ---------- Blocos e grades ---------- */
@@ -136,6 +150,9 @@ tr.mudou { animation: piscar 2.5s ease-out; }
 }
 .selo-entrada { background: var(--ok-fundo); color: var(--ok); }
 .selo-saida { background: var(--saida-fundo); color: var(--saida); }
+.selo-inativo { background: #e6e9ee; color: var(--texto-suave); margin-left: .35rem; font-family: system-ui, sans-serif; }
+
+code { font-family: ui-monospace, Consolas, monospace; font-size: .85em; background: #eef0f3; padding: .1rem .35rem; border-radius: 4px; word-break: break-all; }
 
 /* ---------- Formulários ---------- */
 label { display: flex; flex-direction: column; gap: .25rem; font-weight: 600; font-size: .9rem; }
@@ -163,6 +180,21 @@ button {
 button:hover { background: var(--destaque-escuro); }
 button.secundario { background: #e6e9ee; color: var(--texto); }
 button.secundario:hover { background: #d6dbe2; }
+button.perigo { background: var(--erro); }
+button.perigo:hover { background: #8f1c13; }
+button:disabled { opacity: .6; cursor: wait; }
+
+/* Link com cara de botão (ex: "Exportar CSV") */
+a.botao {
+  display: inline-block;
+  padding: .45rem 1rem;
+  border-radius: var(--raio);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+a.botao.secundario { background: #e6e9ee; color: var(--texto); }
+a.botao.secundario:hover { background: #d6dbe2; }
 
 .formulario {
   display: grid;
@@ -171,6 +203,27 @@ button.secundario:hover { background: #d6dbe2; }
   align-items: end;
 }
 .linha-form { display: flex; flex-wrap: wrap; gap: .75rem; align-items: end; }
+.linha-form.compacta { gap: .4rem; flex-wrap: nowrap; }
+.linha-form.compacta input,
+.linha-form.compacta select,
+.linha-form.compacta button { padding: .35rem .6rem; }
+.linha-form.compacta input { width: 9rem; }
+
+/* Formulário estreito com um campo embaixo do outro (login, senha) */
+.caixa-estreita { max-width: 420px; margin: 2rem auto; }
+.formulario-coluna { display: flex; flex-direction: column; gap: .9rem; }
+
+/* Título do bloco com um botão no lado direito */
+.cabecalho-bloco {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: .5rem 1rem;
+  margin-bottom: .75rem;
+}
+.cabecalho-bloco h2 { margin: 0; }
+.cabecalho-bloco form { margin: 0; }
 .dica { color: var(--texto-suave); font-size: .9rem; margin: .25rem 0 1rem; }
 
 .aviso { padding: .75rem 1rem; border-radius: var(--raio); margin-bottom: 1rem; font-weight: 600; }

@@ -4,6 +4,8 @@
 {% block conteudo %}
 <h1>Rolos de tecido</h1>
 
+{# Só o administrador cadastra rolos. O operador vê apenas a lista. #}
+{% if eh_admin %}
 <section class="bloco">
   <h2>Cadastrar rolo novo</h2>
   <p class="dica">Cada rolo recebe um código próprio (RL-000001, RL-000002…). Depois de cadastrar, imprima a etiqueta e cole no rolo.</p>
@@ -24,9 +26,13 @@
   <datalist id="lista-tipos">{% for t in tipos %}<option value="{{ t }}">{% endfor %}</datalist>
   <datalist id="lista-cores">{% for c in cores %}<option value="{{ c }}">{% endfor %}</datalist>
 </section>
+{% endif %}
 
 <section class="bloco">
-  <h2>Rolos cadastrados ({{ rolos|length }})</h2>
+  <div class="cabecalho-bloco">
+    <h2>Rolos cadastrados ({{ rolos|length }})</h2>
+    <a class="botao secundario" href="{{ url_for('exportar', relatorio='tecidos') }}">Exportar CSV</a>
+  </div>
   <div class="tabela-rolagem">
     <table>
       <thead>
@@ -34,15 +40,19 @@
       </thead>
       <tbody>
         {% for r in rolos %}
-          {# Rolo que acabou (0 m) aparece apagado #}
-          <tr class="{{ 'acabou' if r.metragem_atual == 0 }}">
-            <td class="codigo">{{ r.codigo }}</td>
+          {# Rolo que acabou (0 m) ou foi desativado aparece apagado #}
+          <tr class="{{ 'acabou' if r.metragem_atual == 0 or not r.ativo }}">
+            <td class="codigo">
+              {{ r.codigo }}
+              {% if not r.ativo %}<span class="selo selo-inativo">Desativado</span>{% endif %}
+            </td>
             <td>{{ r.tipo_tecido }}</td>
             <td>{{ r.cor }}</td>
             <td class="num">{{ r.metragem_atual|numero_br(2) }}</td>
             <td class="acoes">
               <a href="{{ url_for('etiqueta', codigo=r.codigo) }}">Etiqueta</a>
               <a href="{{ url_for('movimentacoes', codigo=r.codigo) }}">Histórico</a>
+              {% if eh_admin %}<a href="{{ url_for('editar_item', codigo=r.codigo) }}">Editar</a>{% endif %}
             </td>
           </tr>
         {% else %}

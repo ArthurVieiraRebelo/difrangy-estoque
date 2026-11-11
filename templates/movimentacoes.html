@@ -16,13 +16,17 @@
 </section>
 
 <section class="bloco">
-  <h2>
-    {% if codigo %}Histórico de {{ codigo }}{% else %}Últimas {{ movimentacoes|length }} movimentações{% endif %}
-  </h2>
+  <div class="cabecalho-bloco">
+    <h2>
+      {% if codigo %}Histórico de {{ codigo }}{% else %}Últimas {{ movimentacoes|length }} movimentações{% endif %}
+    </h2>
+    {# O CSV traz o histórico COMPLETO (a tela mostra só as 500 últimas) #}
+    <a class="botao secundario" href="{{ url_for('exportar', relatorio='movimentacoes', codigo=codigo or None) }}">Exportar CSV</a>
+  </div>
   <div class="tabela-rolagem">
     <table>
       <thead>
-        <tr><th>Data/hora</th><th>Código</th><th>Item</th><th>Operação</th><th class="num">Qtd.</th><th>Motivo</th></tr>
+        <tr><th>Data/hora</th><th>Código</th><th>Item</th><th>Operação</th><th class="num">Qtd.</th><th>Motivo</th><th>Usuário</th></tr>
       </thead>
       <tbody>
         {% for m in movimentacoes %}
@@ -35,9 +39,11 @@
               {% if m.tipo_item == 'rolo' %}{{ m.quantidade|numero_br(2) }} m{% else %}{{ m.quantidade|numero_br }} un.{% endif %}
             </td>
             <td>{{ MOTIVOS.get(m.motivo, m.motivo) }}</td>
+            {# Movimentações antigas (antes do login existir) não têm usuário #}
+            <td class="codigo">{{ m.usuario or '—' }}</td>
           </tr>
         {% else %}
-          <tr class="vazio"><td colspan="6">Nenhuma movimentação encontrada.</td></tr>
+          <tr class="vazio"><td colspan="7">Nenhuma movimentação encontrada.</td></tr>
         {% endfor %}
       </tbody>
     </table>

@@ -13,8 +13,12 @@ Sistema web de controle de estoque com leitura de código de barras, feito para 
 - **Rolos de tecido individuais:** cada rolo recebe uma etiqueta própria (`RL-000001`). No corte, basta bipar o rolo e informar quantos metros foram usados.
 - **Painel em tempo real:** qualquer computador com o painel aberto vê as movimentações feitas nos outros em até 3 segundos, sem recarregar a página.
 - **Etiquetas prontas para impressão** em Code128, geradas pelo próprio sistema. Funcionam em folha A4 ou impressora térmica.
-- **Histórico de movimentações** com data, motivo e filtro por código.
+- **Histórico de movimentações** com data, motivo, usuário responsável e filtro por código.
 - **Relatórios:** itens com estoque baixo, consumo de tecido por mês e pijamas vendidos por mês.
+- **Login por funcionário**, com perfis de administrador e operador.
+- **Edição e desativação de itens** sem perder o histórico.
+- **Exportação em CSV** do estoque, do histórico e dos relatórios, formatada para o Excel em português.
+- **Backup automático diário** do banco de dados, com download pela própria interface.
 
 ## Como o estoque é controlado
 
@@ -33,11 +37,29 @@ Leitores de código de barras USB funcionam como um teclado: digitam o código e
 
 ![Tela de leitura](docs/img/bipar.png)
 
+## Usuários e permissões
+
+Cada funcionário entra com o próprio login, e toda movimentação fica registrada com o usuário que a fez. A sessão dura 12 horas, o equivalente a um turno, para que ninguém precise digitar a senha a cada bipe.
+
+| Ação | Operador | Administrador |
+|---|:---:|:---:|
+| Bipar entradas e saídas | ✓ | ✓ |
+| Consultar painel, histórico e relatórios, exportar CSV, imprimir etiquetas | ✓ | ✓ |
+| Ajuste de inventário | | ✓ |
+| Cadastrar, editar e desativar pijamas e rolos | | ✓ |
+| Gerenciar usuários e backups | | ✓ |
+
+Na primeira execução, o sistema pede a criação da conta de administrador. As senhas são armazenadas apenas como hash (scrypt, via Werkzeug). O sistema impede que o último administrador ativo seja desativado ou rebaixado.
+
+Itens não podem ser excluídos, porque o histórico precisa continuar apontando para eles. Um item desativado deixa de aparecer no painel e passa a recusar movimentações, mas pode ser reativado a qualquer momento.
+
+![Administração](docs/img/admin.png)
+
 ## Tecnologias
 
 | Camada | Tecnologia |
 |---|---|
-| Back-end | Python 3, Flask |
+| Back-end | Python 3, Flask, servido pelo Waitress |
 | Banco de dados | SQLite (módulo `sqlite3`, SQL escrito à mão, modo WAL) |
 | Código de barras | python-barcode (Code128) + Pillow |
 | Front-end | HTML com templates Jinja, CSS e JavaScript sem frameworks |
@@ -49,8 +71,11 @@ A escolha por SQLite e SQL sem ORM foi intencional: o volume de dados de uma fá
 
 ```
 .
-├── app.py              # rotas das páginas e da API JSON
-├── banco.py            # acesso ao banco e regras de negócio
+├── app.py              # rotas, login e permissões
+├── banco.py            # acesso ao banco e regras de estoque
+├── usuarios.py         # cadastro de usuários e verificação de senha
+├── backup.py           # cópias de segurança automáticas
+├── exportacao.py       # geração dos arquivos CSV
 ├── etiquetas.py        # geração da imagem do código de barras
 ├── templates/          # páginas HTML (Jinja)
 ├── static/
@@ -79,9 +104,17 @@ pip install -r requirements.txt
 python app.py
 ```
 
-O sistema fica disponível em `http://localhost:5000`. O banco de dados (`estoque.db`) é criado automaticamente na primeira execução.
+O terminal mostra os dois endereços de acesso: `http://localhost:5000`, para o próprio computador, e `http://<IP na rede>:5000`, para os demais. Se a página não abrir nos outros computadores, verifique se o firewall libera a porta 5000.
 
-Nos outros computadores da rede, acesse `http://<IP do computador servidor>:5000`. O endereço aparece no terminal quando o sistema inicia. Se a página não abrir, verifique se o firewall libera a porta 5000.
+Na primeira execução são criados automaticamente:
+
+| Arquivo | Conteúdo |
+|---|---|
+| `estoque.db` | o banco de dados |
+| `.chave_secreta` | a chave que assina os cookies de login |
+| `backups/` | as cópias diárias do banco (as 30 mais recentes) |
+
+Os três ficam fora do Git e não devem ser compartilhados.
 
 ## Testes
 
@@ -89,7 +122,7 @@ Nos outros computadores da rede, acesse `http://<IP do computador servidor>:5000
 python -m unittest -v
 ```
 
-Os testes cobrem as regras de estoque (saldo negativo, arredondamento de metragem, códigos duplicados ou reservados), as rotas da API e a renderização das páginas. Cada teste usa um banco temporário próprio, então o estoque real nunca é tocado.
+Os testes cobrem as regras de estoque (saldo negativo, arredondamento de metragem, códigos duplicados ou reservados), login e permissões por perfil, a exportação CSV, o backup, as rotas da API e a renderização das páginas. Cada teste usa um banco temporário próprio, então o estoque real nunca é tocado.
 
 ## Códigos e etiquetas
 
@@ -112,16 +145,15 @@ Os limites de estoque baixo (5 unidades e 3 metros) ficam no início de `banco.p
 
 ## Limitações conhecidas
 
-- **Sem autenticação.** Qualquer pessoa com acesso à rede interna pode registrar movimentações. Não exponha o sistema à internet.
-- **Servidor de desenvolvimento.** O `app.run()` do Flask atende bem poucos computadores. Para uso contínuo, o recomendado é um servidor WSGI como o [Waitress](https://docs.pylonsproject.org/projects/waitress/).
-- **Backup manual.** Todo o estoque fica no arquivo `estoque.db`. Faça cópias periódicas dele.
+- **Sem HTTPS.** O sistema foi feito para a rede interna. As senhas trafegam sem criptografia entre o navegador e o servidor, então não exponha a porta 5000 à internet.
+- **Backup no mesmo computador.** O backup automático protege contra exclusão acidental e dados corrompidos, mas não contra falha do disco. Copie a pasta `backups/` para outro lugar periodicamente.
+- **Sem limite de tentativas de login.** Aceitável numa rede interna, mas necessário antes de qualquer acesso externo.
 
 ## Próximos passos
 
-- Login de usuários, com registro de quem fez cada movimentação
-- Edição e desativação de itens cadastrados
-- Exportação dos relatórios para planilha
-- Backup automático do banco
+- Limite de tentativas de login
+- Contagem de inventário guiada pelo leitor, com relatório de divergências
+- Cópia automática dos backups para outro computador ou para a nuvem
 
 ## Licença
 

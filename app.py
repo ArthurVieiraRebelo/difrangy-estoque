@@ -577,7 +577,9 @@ if __name__ == "__main__":
     print("Sistema de estoque no ar!")
     print(f"  Neste computador:     http://localhost:{PORTA}")
     print(f"  Nos outros da rede:   http://{descobrir_ip_na_rede()}:{PORTA}")
-    print("Para desligar, aperte Ctrl+C.")
+    # flush=True: mostra o texto na hora (sem isso, se a saída for um arquivo
+    # de log, o Python guarda o texto e só escreve depois)
+    print("Para desligar, aperte Ctrl+C.", flush=True)
     # Waitress: servidor feito para uso real (o app.run() do Flask é só para
     # desenvolvimento). threads=8: atende até 8 pedidos ao mesmo tempo.
     # host="0.0.0.0": aceita conexões dos outros computadores da rede.
