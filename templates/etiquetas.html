@@ -1,14 +1,15 @@
 {% extends "base.html" %}
-{% block titulo %}Etiquetas{% endblock %}
+{% block titulo %}Etiquetas · {{ nome_tipo }}{% endblock %}
 
 {% block conteudo %}
 {# Tudo com a classe "nao-imprimir" some na hora de imprimir (ver @media print no CSS) #}
 <div class="nao-imprimir">
-  <h1>Etiquetas</h1>
+  <h1>Etiquetas · {{ nome_tipo }}</h1>
 
   <section class="bloco">
-    {# method="get": as cópias vão na URL, junto com os códigos (ver rota "etiquetas" no app.py) #}
+    {# method="get": tipo, códigos e cópias vão na URL (ver rota "etiquetas" no app.py) #}
     <form method="get">
+      <input type="hidden" name="tipo" value="{{ tipo }}">
       <div class="tabela-rolagem">
         <table class="lista-copias">
           <thead><tr><th>Código</th><th>Item</th><th>Cópias</th></tr></thead>
@@ -45,10 +46,21 @@
 <div class="folha-etiquetas">
   {% for item in itens %}
     {% for _ in range(item.copias) %}
-      <div class="etiqueta">
-        <div class="etiqueta-titulo">{{ item.descricao }}</div>
-        <img src="{{ url_for('imagem_codigo_barras', codigo=item.codigo) }}" alt="Código de barras {{ item.codigo }}">
-      </div>
+      {% if tipo == 'qr' %}
+        {# QR code: o quadrado à esquerda e os textos à direita (a imagem do QR não traz o código escrito) #}
+        <div class="etiqueta etiqueta-qr">
+          <img src="{{ url_for('imagem_qrcode', codigo=item.codigo) }}" alt="QR code {{ item.codigo }}">
+          <div>
+            <div class="etiqueta-titulo">{{ item.descricao }}</div>
+            <div class="etiqueta-codigo">{{ item.codigo }}</div>
+          </div>
+        </div>
+      {% else %}
+        <div class="etiqueta">
+          <div class="etiqueta-titulo">{{ item.descricao }}</div>
+          <img src="{{ url_for('imagem_codigo_barras', codigo=item.codigo) }}" alt="Código de barras {{ item.codigo }}">
+        </div>
+      {% endif %}
     {% endfor %}
   {% endfor %}
 </div>

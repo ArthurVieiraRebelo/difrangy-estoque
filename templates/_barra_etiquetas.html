@@ -1,0 +1,21 @@
+{# Barra para gerar as etiquetas dos itens marcados — usada em produtos.html e rolos.html
+   (o "_" no nome indica que é um pedaço de página, incluído com {% include %}).
+
+   As caixinhas da tabela pertencem ao formulário abaixo pelo atributo
+   form="form-etiquetas", mesmo estando em outro lugar da página.
+
+   Cada botão tem name="tipo": o navegador envia o value SÓ do botão clicado,
+   então a mesma lista de itens pode virar código de barras ou QR code.
+   Aparecem só os tipos que o master deixou ligados (tipos_etiqueta, vindo do app.py). #}
+<div class="barra-selecao">
+  {% if tipos_etiqueta %}
+    <span id="contador-selecao" aria-live="polite">Marque os itens para gerar as etiquetas.</span>
+    <form id="form-etiquetas" method="get" action="{{ url_for('etiquetas') }}" class="botoes">
+      {% for tipo, texto_botao in tipos_etiqueta %}
+        <button type="submit" name="tipo" value="{{ tipo }}" class="botao-gerar">{{ texto_botao }}</button>
+      {% endfor %}
+    </form>
+  {% else %}
+    <span>A geração de etiquetas está desligada nas configurações do sistema.</span>
+  {% endif %}
+</div>

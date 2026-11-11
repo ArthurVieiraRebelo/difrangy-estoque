@@ -27,9 +27,10 @@ from waitress import serve
 
 import backup
 import banco
+import configuracoes
 import exportacao
 import usuarios
-from etiquetas import gerar_png_codigo_barras
+from etiquetas import gerar_png_codigo_barras, gerar_png_qrcode
 
 PASTA_DO_PROJETO = Path(__file__).parent
 # Porta do sistema. Dá para trocar com a variável de ambiente ESTOQUE_PORTA
@@ -105,6 +106,12 @@ def exigir_admin():
         abort(403)  # 403 = "proibido"
 
 
+def exigir_master():
+    """Chame no começo de qualquer ação que só o master (dono do sistema) pode fazer."""
+    if not usuarios.eh_master(g.usuario):
+        abort(403)
+
+
 def entrar(usuario):
     session.clear()  # começa uma sessão nova (boa prática de segurança)
     session["usuario_id"] = usuario["id"]
@@ -128,6 +135,7 @@ def variaveis_para_todos_os_templates():
         "MOTIVOS": banco.MOTIVOS,
         "PERFIS": usuarios.PERFIS,
         "eh_admin": bool(usuario) and usuario["perfil"] == "admin",
+        "eh_master": usuarios.eh_master(usuario),
     }
 
 
@@ -164,7 +172,8 @@ def primeiro_acesso():
             if formulario.get("senha") != formulario.get("confirmacao"):
                 raise usuarios.ErroUsuario("A senha e a confirmação não são iguais.")
             login_criado = usuarios.criar_usuario(
-                formulario.get("nome"), formulario.get("login"), formulario.get("senha"), "admin"
+                formulario.get("nome"), formulario.get("login"), formulario.get("senha"), "admin",
+                master=True,  # quem faz o primeiro acesso é o dono do sistema
             )
         except usuarios.ErroUsuario as erro:
             flash(str(erro), "erro")
@@ -275,6 +284,8 @@ def produtos():
         formulario=formulario,
         abrir_modal=abrir_modal,
         novo=request.args.get("novo", ""),
+        # Botões de etiqueta que o master deixou ligados (código de barras, QR code)
+        tipos_etiqueta=configuracoes.tipos_de_etiqueta_liberados(),
     )
 
 
@@ -308,6 +319,8 @@ def rolos():
         formulario=formulario,
         abrir_modal=abrir_modal,
         novo=request.args.get("novo", ""),
+        # Botões de etiqueta que o master deixou ligados (código de barras, QR code)
+        tipos_etiqueta=configuracoes.tipos_de_etiqueta_liberados(),
     )
 
 
@@ -353,6 +366,19 @@ def ativar_desativar_item(codigo):
     return redirect(pagina_da_lista(item))
 
 
+@app.route("/itens/<codigo>/excluir", methods=["POST"])
+def excluir_item(codigo):
+    """Exclui de vez um item que já esteja desativado (regra em banco.excluir_item)."""
+    exigir_admin()
+    try:
+        item = banco.excluir_item(codigo)
+    except banco.ErroEstoque as erro:
+        flash(str(erro), "erro")
+        return redirect(url_for("editar_item", codigo=codigo))
+    flash(f"{item['codigo']} excluído. O histórico de movimentações dele continua guardado.", "sucesso")
+    return redirect(pagina_da_lista(item))
+
+
 @app.route("/movimentacoes")
 def movimentacoes():
     # request.args = parâmetros da URL, ex: /movimentacoes?codigo=PJ-FLO-M-AZ
@@ -395,11 +421,19 @@ def converter_copias(texto):
 def etiquetas():
     """Página de impressão das etiquetas dos itens marcados nas listas.
 
-    O endereço traz os códigos e, opcionalmente, as cópias de cada um,
-    na mesma ordem:  /etiquetas?codigo=PJ-FLO-M-AZ&copias=3&codigo=RL-000001&copias=1
+    O endereço traz o TIPO de etiqueta ("barras" ou "qr"), os códigos e,
+    opcionalmente, as cópias de cada um, na mesma ordem:
+        /etiquetas?tipo=qr&codigo=PJ-FLO-M-AZ&copias=3&codigo=RL-000001&copias=1
 
     getlist() pega TODOS os valores com o mesmo nome (o get() pegaria só o primeiro).
     """
+    tipo = request.args.get("tipo", "barras")
+    # Confere no servidor também: esconder o botão não basta, alguém poderia
+    # digitar o endereço direto no navegador.
+    if not configuracoes.etiqueta_liberada(tipo):
+        flash("Este tipo de etiqueta está desligado nas configurações do sistema.", "erro")
+        return redirect(url_for("produtos"))
+
     codigos = request.args.getlist("codigo")[:MAXIMO_ITENS_POR_VEZ]
     copias_digitadas = request.args.getlist("copias")
 
@@ -420,7 +454,13 @@ def etiquetas():
         return redirect(url_for("produtos"))
 
     total = sum(item["copias"] for item in selecionados)
-    return render_template("etiquetas.html", itens=selecionados, total=total)
+    return render_template(
+        "etiquetas.html",
+        itens=selecionados,
+        total=total,
+        tipo=tipo,
+        nome_tipo=configuracoes.TIPOS_ETIQUETA[tipo]["nome"],
+    )
 
 
 @app.route("/codigo-barras/<codigo>.png")
@@ -431,6 +471,16 @@ def imagem_codigo_barras(codigo):
     except banco.ErroEstoque:
         abort(404)
     return Response(gerar_png_codigo_barras(codigo), mimetype="image/png")
+
+
+@app.route("/qrcode/<codigo>.png")
+def imagem_qrcode(codigo):
+    """Devolve a IMAGEM do QR code. É usada no <img> da etiqueta."""
+    try:
+        codigo = banco.limpar_codigo(codigo)
+    except banco.ErroEstoque:
+        abort(404)
+    return Response(gerar_png_qrcode(codigo), mimetype="image/png")
 
 
 # =====================================================================
@@ -475,7 +525,22 @@ def admin():
         usuarios=usuarios.listar_usuarios(),
         backups=backup.listar_backups(),
         pasta_backups=backup.PASTA_BACKUPS,
+        # Para a seção de configurações (que só aparece para o master)
+        tipos_etiqueta=configuracoes.TIPOS_ETIQUETA,
+        etiqueta_liberada=configuracoes.etiqueta_liberada,
     )
+
+
+@app.route("/admin/configuracoes", methods=["POST"])
+def salvar_configuracoes():
+    """Liga/desliga os botões de gerar etiqueta. Só o master pode."""
+    exigir_master()
+    for tipo, dados in configuracoes.TIPOS_ETIQUETA.items():
+        # Caixinha marcada envia o valor "1"; desmarcada não envia nada
+        ligado = request.form.get(tipo) == "1"
+        configuracoes.definir(dados["chave"], "1" if ligado else "0")
+    flash("Configurações salvas.", "sucesso")
+    return redirect(url_for("admin"))
 
 
 @app.route("/admin/usuarios", methods=["POST"])
@@ -516,7 +581,7 @@ def redefinir_senha(id_usuario):
     """O administrador define uma senha nova para quem esqueceu a sua."""
     exigir_admin()
     try:
-        usuarios.alterar_senha(id_usuario, request.form.get("nova_senha"))
+        usuarios.redefinir_senha(id_usuario, request.form.get("nova_senha"), quem_alterou=g.usuario)
     except usuarios.ErroUsuario as erro:
         flash(str(erro), "erro")
     else:

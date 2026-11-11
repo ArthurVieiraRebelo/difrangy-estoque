@@ -230,6 +230,71 @@ class TesteBancoAntigo(TesteComBancoLimpo):
         item = banco.registrar_movimentacao("PJ-VEL-M-AZ", "saida", "1", "venda", ADMIN)
         self.assertEqual(item["saldo"], 3)
 
+    def test_admin_mais_antigo_vira_master(self):
+        conexao = banco.conectar()
+        conexao.executescript("""
+            DROP TABLE usuarios;
+            CREATE TABLE usuarios (id INTEGER PRIMARY KEY, nome TEXT, login TEXT UNIQUE,
+                                   senha_hash TEXT, perfil TEXT, ativo INTEGER DEFAULT 1);
+            INSERT INTO usuarios VALUES (1, 'Op', 'op', 'x', 'operador', 1);
+            INSERT INTO usuarios VALUES (2, 'Dono', 'dono', 'x', 'admin', 1);
+            INSERT INTO usuarios VALUES (3, 'Outro', 'outro', 'x', 'admin', 1);
+        """)
+        conexao.close()
+
+        banco.criar_tabelas()
+        banco.criar_tabelas()  # rodar de novo não pode criar um segundo master
+
+        masters = banco.consultar("SELECT login FROM usuarios WHERE master = 1")
+        self.assertEqual(masters, [{"login": "dono"}])
+
+
+class TesteExclusao(TesteComBancoLimpo):
+
+    def setUp(self):
+        super().setUp()
+        self.pijama = banco.cadastrar_produto("Floral", "M", "Azul", "10", ADMIN)
+        banco.registrar_movimentacao(self.pijama, "saida", "2", "venda", ADMIN)
+
+    def test_item_ativo_nao_pode_ser_excluido(self):
+        with self.assertRaises(banco.ErroEstoque):
+            banco.excluir_item(self.pijama)
+        self.assertIsNotNone(banco.buscar_produto(self.pijama))
+
+    def test_excluir_desativado_mantem_o_historico(self):
+        banco.definir_item_ativo(self.pijama, False)
+        banco.excluir_item(self.pijama)
+
+        self.assertIsNone(banco.buscar_produto(self.pijama))
+        historico = banco.listar_movimentacoes(codigo=self.pijama)
+        self.assertEqual(len(historico), 2)  # estoque inicial + venda continuam lá
+        self.assertEqual(historico[0]["descricao"], "(item excluído)")
+        # Os relatórios continuam contando a venda do item excluído (totais do mês não mudam)
+        vendas = banco.relatorio_pijamas_vendidos_por_mes()
+        self.assertEqual([(v["modelo"], v["unidades"]) for v in vendas], [("(item excluído)", 2)])
+
+    def test_corte_de_rolo_excluido_continua_no_consumo(self):
+        rolo = banco.cadastrar_rolo("Malha", "Azul", "5", ADMIN)
+        banco.registrar_movimentacao(rolo, "saida", "1,5", "corte", ADMIN)
+        banco.definir_item_ativo(rolo, False)
+        banco.excluir_item(rolo)
+        consumo = banco.relatorio_consumo_tecido_por_mes()
+        self.assertEqual([(c["tipo_tecido"], c["metros"]) for c in consumo], [("(item excluído)", 1.5)])
+
+    def test_codigo_de_pijama_excluido_nao_volta_a_ser_usado(self):
+        banco.definir_item_ativo(self.pijama, False)
+        banco.excluir_item(self.pijama)
+        with self.assertRaises(banco.ErroEstoque):
+            banco.cadastrar_produto("Floral", "M", "Azul", "0", ADMIN)
+
+    def test_excluir_rolo_desativado(self):
+        rolo = banco.cadastrar_rolo("Malha", "Azul", "5", ADMIN)
+        banco.definir_item_ativo(rolo, False)
+        banco.excluir_item(rolo)
+        self.assertIsNone(banco.buscar_rolo(rolo))
+        # O próximo rolo recebe um número novo, nunca o do excluído
+        self.assertEqual(banco.cadastrar_rolo("Malha", "Azul", "5", ADMIN), "RL-000002")
+
 
 if __name__ == "__main__":
     unittest.main()

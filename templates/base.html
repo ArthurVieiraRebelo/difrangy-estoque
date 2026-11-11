@@ -55,7 +55,7 @@
       {% if g.usuario %}
         <div class="usuario-logado">
           <a href="{{ url_for('minha_senha') }}" title="Trocar minha senha">
-            {{ g.usuario.nome }} <small>({{ PERFIS[g.usuario.perfil] }})</small>
+            {{ g.usuario.nome }} <small>({{ 'Master' if eh_master else PERFIS[g.usuario.perfil] }})</small>
           </a>
           {# Sair é um formulário POST (e não um link) para que outro site não consiga deslogar ninguém #}
           <form method="post" action="{{ url_for('sair') }}">

@@ -405,6 +405,26 @@ a.botao.secundario:hover { background: var(--neutro-hover); }
   object-fit: contain;
 }
 
+/* Etiqueta de QR code: quadrado à esquerda, textos à direita */
+.etiqueta-qr {
+  display: flex;
+  align-items: center;
+  gap: 3mm;
+  text-align: left;
+}
+.etiqueta-qr img { width: 22mm; height: 22mm; margin: 0; flex-shrink: 0; }
+.etiqueta-qr .etiqueta-titulo { margin-bottom: 1.5mm; }
+.etiqueta-codigo { font-family: ui-monospace, Consolas, monospace; font-size: 10pt; font-weight: 700; }
+
+/* Selo "Master" na lista de usuários */
+.selo-master { background: var(--saida-fundo); color: var(--saida); margin-left: .35rem; }
+
+/* Linha de opções com caixinha (configurações do master) */
+.opcao-config { flex-direction: row; align-items: center; gap: .6rem; font-weight: 600; }
+.opcao-config input { width: 1.15rem; height: 1.15rem; }
+.zona-perigo { border-color: var(--erro); }
+.zona-perigo h2 { color: var(--erro); }
+
 /* Na impressão, só as etiquetas aparecem (e sempre em fundo branco) */
 @media print {
   .topo, .nao-imprimir, .aviso { display: none !important; }

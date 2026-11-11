@@ -12,11 +12,11 @@ Sistema web de controle de estoque com leitura de código de barras, feito para 
 - **Pijamas por SKU:** cada combinação de modelo, tamanho e cor tem seu próprio código (ex.: `PJ-FLO-M-AZ`).
 - **Rolos de tecido individuais:** cada rolo recebe uma etiqueta própria (`RL-000001`). No corte, basta bipar o rolo e informar quantos metros foram usados.
 - **Painel em tempo real:** qualquer computador com o painel aberto vê as movimentações feitas nos outros em até 3 segundos, sem recarregar a página.
-- **Etiquetas prontas para impressão** em Code128, geradas pelo próprio sistema. Funcionam em folha A4 ou impressora térmica.
+- **Etiquetas prontas para impressão** em código de barras (Code128) ou QR code, geradas em lote pelo próprio sistema. Funcionam em folha A4 ou impressora térmica.
 - **Histórico de movimentações** com data, motivo, usuário responsável e filtro por código.
 - **Relatórios:** itens com estoque baixo, consumo de tecido por mês e pijamas vendidos por mês.
 - **Login por funcionário**, com perfis de administrador e operador.
-- **Edição e desativação de itens** sem perder o histórico.
+- **Edição, desativação e exclusão de itens** sem perder o histórico.
 - **Exportação em CSV** do estoque, do histórico e dos relatórios, formatada para o Excel em português.
 - **Backup automático diário** do banco de dados, com download pela própria interface.
 - **Tema claro e escuro**, que segue a preferência do sistema operacional até o usuário escolher um tema.
@@ -42,17 +42,20 @@ Leitores de código de barras USB funcionam como um teclado: digitam o código e
 
 Cada funcionário entra com o próprio login, e toda movimentação fica registrada com o usuário que a fez. A sessão dura 12 horas, o equivalente a um turno, para que ninguém precise digitar a senha a cada bipe.
 
-| Ação | Operador | Administrador |
-|---|:---:|:---:|
-| Bipar entradas e saídas | ✓ | ✓ |
-| Consultar painel, histórico e relatórios, exportar CSV, imprimir etiquetas | ✓ | ✓ |
-| Ajuste de inventário | | ✓ |
-| Cadastrar, editar e desativar pijamas e rolos | | ✓ |
-| Gerenciar usuários e backups | | ✓ |
+| Ação | Operador | Administrador | Master |
+|---|:---:|:---:|:---:|
+| Bipar entradas e saídas | ✓ | ✓ | ✓ |
+| Consultar painel, histórico e relatórios, exportar CSV, imprimir etiquetas | ✓ | ✓ | ✓ |
+| Ajuste de inventário | | ✓ | ✓ |
+| Cadastrar, editar, desativar e excluir pijamas e rolos | | ✓ | ✓ |
+| Gerenciar usuários e backups | | ✓ | ✓ |
+| Configurações do sistema (tipos de etiqueta liberados) | | | ✓ |
 
-Na primeira execução, o sistema pede a criação da conta de administrador. As senhas são armazenadas apenas como hash (scrypt, via Werkzeug). O sistema impede que o último administrador ativo seja desativado ou rebaixado.
+Na primeira execução, o sistema pede a criação da conta do **master**: o administrador dono do sistema. Ele é o único que altera as configurações, e nenhum outro usuário pode desativá-lo, rebaixá-lo ou redefinir sua senha. Em bancos de versões anteriores, o administrador mais antigo é promovido a master automaticamente.
 
-Itens não podem ser excluídos, porque o histórico precisa continuar apontando para eles. Um item desativado deixa de aparecer no painel e passa a recusar movimentações, mas pode ser reativado a qualquer momento.
+As senhas são armazenadas apenas como hash (scrypt, via Werkzeug). O sistema impede que o último administrador ativo seja desativado ou rebaixado.
+
+Excluir um item exige dois passos: primeiro desativá-lo, depois excluí-lo na tela de edição. Um item desativado deixa de aparecer no painel e recusa movimentações. As movimentações de um item excluído continuam no histórico e nos relatórios, identificadas como "(item excluído)", para que os totais de meses anteriores não mudem. O código de um pijama excluído não pode ser reutilizado.
 
 ![Administração](docs/img/admin.png)
 
@@ -62,7 +65,7 @@ Itens não podem ser excluídos, porque o histórico precisa continuar apontando
 |---|---|
 | Back-end | Python 3, Flask, servido pelo Waitress |
 | Banco de dados | SQLite (módulo `sqlite3`, SQL escrito à mão, modo WAL) |
-| Código de barras | python-barcode (Code128) + Pillow |
+| Código de barras e QR code | python-barcode (Code128), qrcode, Pillow |
 | Front-end | HTML com templates Jinja, CSS e JavaScript sem frameworks |
 | Testes | `unittest` da biblioteca padrão |
 
@@ -77,7 +80,8 @@ A escolha por SQLite e SQL sem ORM foi intencional: o volume de dados de uma fá
 ├── usuarios.py         # cadastro de usuários e verificação de senha
 ├── backup.py           # cópias de segurança automáticas
 ├── exportacao.py       # geração dos arquivos CSV
-├── etiquetas.py        # geração da imagem do código de barras
+├── configuracoes.py    # configurações do sistema (alteradas pelo master)
+├── etiquetas.py        # imagens do código de barras e do QR code
 ├── templates/          # páginas HTML (Jinja)
 ├── static/
 │   ├── css/estilo.css
@@ -136,7 +140,9 @@ Os testes cobrem as regras de estoque (saldo negativo, arredondamento de metrage
 
 O código do pijama é gerado a partir das primeiras letras do modelo e da cor, sem acentos, e pode ser digitado manualmente no cadastro. O prefixo `RL-` é reservado para rolos.
 
-O cadastro é feito numa janela modal. O item recém-cadastrado já volta marcado na lista. Para imprimir, marque um ou vários itens e clique em **Gerar etiquetas**: a página de impressão permite definir o número de cópias de cada item. Todas as etiquetas saem na mesma escala, então as barras têm a mesma espessura em códigos curtos e longos.
+O cadastro é feito numa janela modal. O item recém-cadastrado já volta marcado na lista. Para imprimir, marque um ou vários itens e escolha **Gerar código de barras** ou **Gerar QR code**. A página de impressão permite definir o número de cópias de cada item. O master pode desligar qualquer um dos dois botões nas configurações do sistema.
+
+Os dois formatos guardam o mesmo texto, o código do item, e funcionam igualmente na tela Bipar. Leitores laser comuns leem apenas código de barras. Para ler QR code é necessário um leitor de imagem (2D).
 
 ![Etiquetas](docs/img/etiqueta.png)
 

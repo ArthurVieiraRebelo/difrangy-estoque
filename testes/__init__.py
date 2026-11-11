@@ -57,7 +57,8 @@ class TesteComCliente(TesteComBancoLimpo):
         super().setUp()
         from app import app  # importado aqui para usar o banco temporário
         self.app = app
-        usuarios.criar_usuario("Ana Admin", "ana", SENHA_PADRAO, "admin")
+        # Ana é a master (como quem faz o primeiro acesso); Otto é operador
+        usuarios.criar_usuario("Ana Admin", "ana", SENHA_PADRAO, "admin", master=True)
         usuarios.criar_usuario("Otto Operador", "otto", SENHA_PADRAO, "operador")
         self.admin = self.cliente_logado("ana")
         self.operador = self.cliente_logado("otto")

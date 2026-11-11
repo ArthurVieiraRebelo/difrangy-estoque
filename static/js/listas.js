@@ -38,17 +38,17 @@ if (modal && botaoAbrir) {
 const caixas = Array.from(document.querySelectorAll(".selecao-item"));
 const marcarTodos = document.getElementById("selecionar-todos");
 const contador = document.getElementById("contador-selecao");
-const botaoGerar = document.getElementById("gerar-etiquetas");
-const textoNadaMarcado = contador.textContent; // o texto que veio no HTML de cada página
+// Um botão por tipo de etiqueta liberado pelo master (código de barras, QR code)
+const botoesGerar = Array.from(document.querySelectorAll(".botao-gerar"));
 
 function atualizarSelecao() {
   const marcadas = caixas.filter((caixa) => caixa.checked).length;
 
-  if (marcadas === 0) contador.textContent = textoNadaMarcado;
+  if (marcadas === 0) contador.textContent = "Marque os itens para gerar as etiquetas.";
   else if (marcadas === 1) contador.textContent = "1 item marcado.";
   else contador.textContent = `${marcadas} itens marcados.`;
 
-  botaoGerar.disabled = marcadas === 0;
+  for (const botao of botoesGerar) botao.disabled = marcadas === 0;
 
   // A caixinha do cabeçalho fica marcada se TODAS estão marcadas, e
   // "pela metade" (indeterminate) se só algumas estão.
@@ -56,9 +56,13 @@ function atualizarSelecao() {
   marcarTodos.indeterminate = marcadas > 0 && marcadas < caixas.length;
 }
 
-if (caixas.length === 0) {
+if (botoesGerar.length === 0) {
+  // O master desligou todos os tipos de etiqueta: as caixinhas não servem
+  // para nada, então escondemos a coluna inteira.
+  for (const celula of document.querySelectorAll(".coluna-selecao")) celula.hidden = true;
+} else if (caixas.length === 0) {
   marcarTodos.disabled = true;
-  botaoGerar.disabled = true;
+  for (const botao of botoesGerar) botao.disabled = true;
 } else {
   for (const caixa of caixas) caixa.addEventListener("change", atualizarSelecao);
 

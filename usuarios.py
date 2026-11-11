@@ -8,6 +8,10 @@ Perfis:
                  usuários e backups.
     operador  -> bipa entradas e saídas e consulta as telas.
 
+MASTER: é o dono do sistema — o administrador criado no primeiro acesso.
+Só ele mexe nas configurações do sistema, e NINGUÉM mais consegue
+desativar, rebaixar ou trocar a senha dele (nem outro administrador).
+
 A SENHA NUNCA É GUARDADA. Guardamos só um "hash" dela: um texto embaralhado
 que não dá para transformar de volta na senha. No login, a senha digitada
 passa pelo mesmo embaralhamento e comparamos os resultados. Assim, mesmo
@@ -86,17 +90,24 @@ def autenticar(login, senha):
 
 # ---------------------------------------------------------------- gravações
 
-def criar_usuario(nome, login, senha, perfil):
+def eh_master(usuario):
+    return bool(usuario) and bool(usuario["master"])
+
+
+def criar_usuario(nome, login, senha, perfil, master=False):
+    """Cria um usuário. master=True só é usado no primeiro acesso."""
     nome = str(nome or "").strip()
     if not nome:
         raise ErroUsuario("Preencha o nome.")
     login = _validar_login(login)
     _validar_senha(senha)
     _validar_perfil(perfil)
+    if master and perfil != "admin":
+        raise ErroUsuario("O master precisa ser administrador.")
     try:
         banco.executar(
-            "INSERT INTO usuarios (nome, login, senha_hash, perfil) VALUES (?, ?, ?, ?)",
-            (nome, login, generate_password_hash(senha), perfil),
+            "INSERT INTO usuarios (nome, login, senha_hash, perfil, master) VALUES (?, ?, ?, ?, ?)",
+            (nome, login, generate_password_hash(senha), perfil, 1 if master else 0),
         )
     except sqlite3.IntegrityError:
         raise ErroUsuario(f"Já existe um usuário com o login '{login}'.")
@@ -111,6 +122,22 @@ def alterar_senha(id_usuario, nova_senha):
     )
 
 
+def _proteger_master(alvo, quem_alterou):
+    """O master só pode ser alterado por ele mesmo. Sem isso, outro administrador
+    poderia trocar a senha do master e tomar o controle do sistema."""
+    if eh_master(alvo) and alvo["id"] != quem_alterou["id"]:
+        raise ErroUsuario("O master do sistema só pode ser alterado por ele mesmo.")
+
+
+def redefinir_senha(id_alvo, nova_senha, quem_alterou):
+    """Um administrador define uma senha nova para outro usuário (que esqueceu a dele)."""
+    alvo = buscar_por_id(id_alvo)
+    if alvo is None:
+        raise ErroUsuario("Usuário não encontrado.")
+    _proteger_master(alvo, quem_alterou)
+    alterar_senha(id_alvo, nova_senha)
+
+
 def trocar_propria_senha(usuario, senha_atual, nova_senha, confirmacao):
     """O próprio funcionário troca a senha (precisa saber a atual)."""
     if not check_password_hash(usuario["senha_hash"], senha_atual or ""):
@@ -123,14 +150,17 @@ def trocar_propria_senha(usuario, senha_atual, nova_senha, confirmacao):
 def alterar_usuario(id_alvo, perfil, ativo, quem_alterou):
     """Muda perfil e/ou ativa/desativa um usuário.
 
-    Duas proteções para o sistema nunca ficar sem administrador:
-    - ninguém desativa a si mesmo nem tira o próprio perfil de admin;
+    Proteções para o sistema nunca ficar sem administrador:
+    - o master só pode ser alterado por ele mesmo;
+    - ninguém desativa a si mesmo nem tira o próprio perfil de admin
+      (por isso o master nunca deixa de ser administrador ativo);
     - não dá para desativar/rebaixar o ÚLTIMO administrador ativo.
     """
     _validar_perfil(perfil)
     alvo = buscar_por_id(id_alvo)
     if alvo is None:
         raise ErroUsuario("Usuário não encontrado.")
+    _proteger_master(alvo, quem_alterou)
 
     deixa_de_ser_admin_ativo = alvo["perfil"] == "admin" and alvo["ativo"] and (
         perfil != "admin" or not ativo

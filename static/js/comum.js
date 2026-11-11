@@ -133,3 +133,14 @@ if (botaoTema) {
   botaoTema.addEventListener("click", alternarTema);
   mostrarNomeDoTema();
 }
+
+// ---------- Confirmação antes de ações perigosas ----------
+// Qualquer formulário com o atributo data-confirmar="mensagem" mostra uma
+// janela de confirmação antes de enviar. Se a pessoa clicar em "Cancelar",
+// preventDefault() impede o envio. (Usado no botão Excluir.)
+document.addEventListener("submit", (evento) => {
+  const mensagem = evento.target.dataset.confirmar;
+  if (mensagem && !window.confirm(mensagem)) {
+    evento.preventDefault();
+  }
+});

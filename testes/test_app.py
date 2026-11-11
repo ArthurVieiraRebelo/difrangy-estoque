@@ -177,7 +177,9 @@ class TestePaginas(TesteComCliente):
     def test_operador_nao_recebe_o_modal_de_cadastro(self):
         html = self.operador.get("/produtos").get_data(as_text=True)
         self.assertNotIn("modal-cadastro", html)
-        self.assertIn("Gerar etiquetas", html)  # mas pode gerar etiquetas
+        # mas pode gerar etiquetas, nos dois formatos
+        self.assertIn("Gerar código de barras", html)
+        self.assertIn("Gerar QR code", html)
 
     def test_editar_e_desativar_pelas_paginas(self):
         codigo = banco.cadastrar_produto("Floral", "M", "Azul", "5", ADMIN)

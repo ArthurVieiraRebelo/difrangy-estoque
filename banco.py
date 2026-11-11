@@ -166,7 +166,15 @@ def criar_tabelas():
                 login       TEXT    NOT NULL UNIQUE,
                 senha_hash  TEXT    NOT NULL,   -- nunca a senha em si (ver usuarios.py)
                 perfil      TEXT    NOT NULL CHECK (perfil IN ('admin', 'operador')),
-                ativo       INTEGER NOT NULL DEFAULT 1
+                ativo       INTEGER NOT NULL DEFAULT 1,
+                master      INTEGER NOT NULL DEFAULT 0  -- 1 = dono do sistema (ver usuarios.py)
+            );
+
+            -- Configurações do sistema (ex: quais tipos de etiqueta estão liberados).
+            -- Cada linha é um par chave/valor, ex: ('etiqueta_qr', '1').
+            CREATE TABLE IF NOT EXISTS configuracoes (
+                chave  TEXT PRIMARY KEY,
+                valor  TEXT NOT NULL
             );
 
             -- Índices deixam as buscas por código e por data mais rápidas
@@ -180,6 +188,15 @@ def criar_tabelas():
         _adicionar_coluna_se_faltar(conexao, "produtos", "ativo", "INTEGER NOT NULL DEFAULT 1")
         _adicionar_coluna_se_faltar(conexao, "rolos_tecido", "ativo", "INTEGER NOT NULL DEFAULT 1")
         _adicionar_coluna_se_faltar(conexao, "movimentacoes", "usuario", "TEXT")
+        _adicionar_coluna_se_faltar(conexao, "usuarios", "master", "INTEGER NOT NULL DEFAULT 0")
+
+        # Se ainda não existe master (banco de uma versão antiga), o administrador
+        # mais antigo (o do primeiro acesso, menor id) vira o master.
+        conexao.execute("""
+            UPDATE usuarios SET master = 1
+            WHERE id = (SELECT MIN(id) FROM usuarios WHERE perfil = 'admin')
+              AND NOT EXISTS (SELECT 1 FROM usuarios WHERE master = 1)
+        """)
         conexao.commit()
     finally:
         conexao.close()
@@ -377,12 +394,15 @@ def listar_movimentacoes(limite=50, codigo=""):
 
     Se "codigo" for informado, mostra só as daquele item.
     O LEFT JOIN busca a descrição do item na tabela certa (produtos ou rolos).
+    COALESCE pega o primeiro valor que não for vazio: se o item foi excluído,
+    os dois JOINs não acham nada e a descrição vira "(item excluído)".
     """
     return consultar(
         """SELECT m.*,
                   COALESCE(
                       'Pijama ' || p.modelo || ' · ' || p.tamanho || ' · ' || p.cor,
-                      'Rolo ' || r.tipo_tecido || ' · ' || r.cor
+                      'Rolo ' || r.tipo_tecido || ' · ' || r.cor,
+                      '(item excluído)'
                   ) AS descricao
            FROM movimentacoes m
            LEFT JOIN produtos p
@@ -464,6 +484,11 @@ def cadastrar_produto(modelo, tamanho, cor, quantidade_inicial, usuario, codigo=
     if codigo.startswith(PREFIXO_ROLO):
         raise ErroEstoque(f"Códigos começando com {PREFIXO_ROLO} são reservados para rolos de tecido.")
 
+    # Código de um pijama EXCLUÍDO não pode voltar a ser usado: o histórico
+    # antigo dele passaria a aparecer como se fosse do pijama novo.
+    if buscar_produto(codigo) is None and _codigo_tem_historico(codigo):
+        raise ErroEstoque(f"O código {codigo} já foi usado por um pijama excluído. Use outro código.")
+
     conexao = conectar()
     try:
         conexao.execute(
@@ -538,11 +563,36 @@ def editar_rolo(codigo, tipo_tecido, cor):
         raise ErroEstoque(f"Rolo {codigo} não encontrado.")
 
 
+def _codigo_tem_historico(codigo):
+    return consultar_um("SELECT 1 FROM movimentacoes WHERE codigo_item = ? LIMIT 1", (codigo,)) is not None
+
+
+def excluir_item(codigo):
+    """Exclui de vez um pijama ou rolo. Só funciona se ele já estiver DESATIVADO
+    (assim ninguém exclui um item em uso por engano, com um clique só).
+
+    As movimentações dele NÃO são apagadas: o histórico e os relatórios continuam
+    corretos, e o item aparece lá como "(item excluído)".
+    """
+    item = buscar_item(codigo)
+    if item is None:
+        raise ErroEstoque(f"Código {codigo} não encontrado.")
+    if item["ativo"]:
+        raise ErroEstoque(f"Desative {item['codigo']} antes de excluir.")
+    if item["tipo_item"] == "produto":
+        executar("DELETE FROM produtos WHERE codigo = ? AND ativo = 0", (item["codigo"],))
+    else:
+        # Rolos não reaproveitam código: o número vem do id, que nunca se repete
+        # (AUTOINCREMENT), então não há risco de misturar históricos.
+        executar("DELETE FROM rolos_tecido WHERE codigo = ? AND ativo = 0", (item["codigo"],))
+    return item
+
+
 def definir_item_ativo(codigo, ativo):
     """Desativa (ativo=False) ou reativa (ativo=True) um pijama ou rolo.
 
-    Não existe "excluir": o histórico de movimentações precisa continuar
-    apontando para o item. Desativado, ele some do painel e não aceita bipe.
+    Desativado, ele some do painel e não aceita bipe, mas o histórico continua.
+    Só um item desativado pode ser excluído (ver excluir_item).
     """
     item = buscar_item(codigo)
     if item is None:
@@ -641,28 +691,32 @@ def relatorio_consumo_tecido_por_mes():
     """Metros cortados por mês, por tipo de tecido e cor.
 
     substr(data, 1, 7) pega só 'AAAA-MM' da data, para agrupar por mês.
+    LEFT JOIN (e não JOIN): cortes de rolos que foram EXCLUÍDOS continuam
+    somando, agrupados como "(item excluído)" — assim o total de um mês
+    passado nunca muda depois que um rolo é excluído.
     """
     return consultar(
         """SELECT substr(m.data, 1, 7) AS mes,
-                  r.tipo_tecido, r.cor,
+                  COALESCE(r.tipo_tecido, '(item excluído)') AS tipo_tecido,
+                  COALESCE(r.cor, '—') AS cor,
                   ROUND(SUM(m.quantidade), 2) AS metros
            FROM movimentacoes m
-           JOIN rolos_tecido r ON r.codigo = m.codigo_item
+           LEFT JOIN rolos_tecido r ON r.codigo = m.codigo_item
            WHERE m.tipo_item = 'rolo' AND m.tipo = 'saida' AND m.motivo = 'corte'
-           GROUP BY mes, r.tipo_tecido, r.cor
+           GROUP BY mes, tipo_tecido, cor
            ORDER BY mes DESC, metros DESC"""
     )
 
 
 def relatorio_pijamas_vendidos_por_mes():
-    """Pijamas vendidos por mês, por modelo."""
+    """Pijamas vendidos por mês, por modelo (LEFT JOIN pelo mesmo motivo do relatório acima)."""
     return consultar(
         """SELECT substr(m.data, 1, 7) AS mes,
-                  p.modelo,
+                  COALESCE(p.modelo, '(item excluído)') AS modelo,
                   CAST(SUM(m.quantidade) AS INTEGER) AS unidades
            FROM movimentacoes m
-           JOIN produtos p ON p.codigo = m.codigo_item
+           LEFT JOIN produtos p ON p.codigo = m.codigo_item
            WHERE m.tipo_item = 'produto' AND m.tipo = 'saida' AND m.motivo = 'venda'
-           GROUP BY mes, p.modelo
+           GROUP BY mes, modelo
            ORDER BY mes DESC, unidades DESC"""
     )

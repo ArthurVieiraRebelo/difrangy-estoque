@@ -38,4 +38,22 @@
     </button>
   </form>
 </section>
+
+{# Excluir só aparece para item DESATIVADO: são dois passos de propósito,
+   para ninguém apagar um item em uso com um clique errado. #}
+{% if not item.ativo %}
+<section class="bloco zona-perigo">
+  <h2>Excluir definitivamente</h2>
+  <p class="dica">
+    O item sai do sistema e <strong>não dá para desfazer</strong>.
+    As movimentações dele continuam no histórico e nos relatórios, marcadas como "(item excluído)".
+    {% if item.tipo_item == 'produto' %}O código {{ item.codigo }} não poderá ser usado de novo.{% endif %}
+  </p>
+  {# data-confirmar: o comum.js pede confirmação antes de enviar #}
+  <form method="post" action="{{ url_for('excluir_item', codigo=item.codigo) }}"
+        data-confirmar="Excluir {{ item.codigo }} definitivamente? Isso não pode ser desfeito.">
+    <button type="submit" class="perigo">Excluir {{ item.codigo }}</button>
+  </form>
+</section>
+{% endif %}
 {% endblock %}

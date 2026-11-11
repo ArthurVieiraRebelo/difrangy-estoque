@@ -59,6 +59,34 @@ class TesteUsuarios(TesteComBancoLimpo):
         with self.assertRaises(usuarios.ErroUsuario):
             usuarios.trocar_propria_senha(self.ana, "senha123", "novaSenha1", "diferente")
 
+    def test_master_so_pode_ser_alterado_por_ele_mesmo(self):
+        usuarios.criar_usuario("Dono", "dono", "senha123", "admin", master=True)
+        dono = usuarios.autenticar("dono", "senha123")
+        # Ana é admin comum: não consegue rebaixar, desativar nem trocar a senha do master
+        with self.assertRaises(usuarios.ErroUsuario):
+            usuarios.alterar_usuario(dono["id"], "operador", ativo=True, quem_alterou=self.ana)
+        with self.assertRaises(usuarios.ErroUsuario):
+            usuarios.alterar_usuario(dono["id"], "admin", ativo=False, quem_alterou=self.ana)
+        with self.assertRaises(usuarios.ErroUsuario):
+            usuarios.redefinir_senha(dono["id"], "tomei123", quem_alterou=self.ana)
+        self.assertIsNotNone(usuarios.autenticar("dono", "senha123"))
+
+    def test_master_tambem_nao_se_rebaixa(self):
+        usuarios.criar_usuario("Dono", "dono", "senha123", "admin", master=True)
+        dono = usuarios.autenticar("dono", "senha123")
+        with self.assertRaises(usuarios.ErroUsuario):
+            usuarios.alterar_usuario(dono["id"], "operador", ativo=True, quem_alterou=dono)
+
+    def test_master_precisa_ser_admin(self):
+        with self.assertRaises(usuarios.ErroUsuario):
+            usuarios.criar_usuario("Op", "op", "senha123", "operador", master=True)
+
+    def test_admin_redefine_senha_de_usuario_comum(self):
+        usuarios.criar_usuario("Bia", "bia", "senha123", "operador")
+        bia = usuarios.autenticar("bia", "senha123")
+        usuarios.redefinir_senha(bia["id"], "nova1234", quem_alterou=self.ana)
+        self.assertIsNotNone(usuarios.autenticar("bia", "nova1234"))
+
     def test_ultimo_admin_nao_pode_ser_rebaixado_por_ninguem(self):
         # Mesmo pedido por OUTRA pessoa (ex: um operador, se algum dia uma tela
         # deixar), o último administrador ativo não pode perder o acesso.

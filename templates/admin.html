@@ -4,6 +4,24 @@
 {% block conteudo %}
 <h1>Administração</h1>
 
+{# Configurações do sistema: só o master (dono do sistema) vê e altera #}
+{% if eh_master %}
+<section class="bloco">
+  <h2>Configurações do sistema <span class="selo selo-master">Só o master</span></h2>
+  <p class="dica">Escolha quais botões de etiqueta aparecem nas listas de Pijamas e Tecidos, para todos os usuários.</p>
+  <form method="post" action="{{ url_for('salvar_configuracoes') }}" class="formulario-coluna">
+    {% for tipo, dados in tipos_etiqueta.items() %}
+      <label class="opcao-config">
+        {# Caixinha marcada envia value="1"; desmarcada não envia nada (ver salvar_configuracoes no app.py) #}
+        <input type="checkbox" name="{{ tipo }}" value="1" {{ 'checked' if etiqueta_liberada(tipo) }}>
+        Botão “{{ dados.botao }}”
+      </label>
+    {% endfor %}
+    <div><button type="submit">Salvar configurações</button></div>
+  </form>
+</section>
+{% endif %}
+
 <section class="bloco">
   <h2>Novo usuário</h2>
   <form method="post" action="{{ url_for('criar_usuario') }}" class="formulario" autocomplete="off">
@@ -30,8 +48,16 @@
       <tbody>
         {% for u in usuarios %}
           <tr class="{{ 'acabou' if not u.ativo }}">
-            <td>{{ u.nome }}{% if u.id == g.usuario.id %} <small>(você)</small>{% endif %}</td>
+            <td>
+              {{ u.nome }}{% if u.id == g.usuario.id %} <small>(você)</small>{% endif %}
+              {% if u.master %}<span class="selo selo-master">Master</span>{% endif %}
+            </td>
             <td class="codigo">{{ u.login }}</td>
+            {# O master não pode ser alterado por ninguém (nem por ele mesmo, nesta tela:
+               a senha dele é trocada em "Trocar minha senha") — ver usuarios.py #}
+            {% if u.master %}
+            <td colspan="2" class="dica" style="margin: 0;">Dono do sistema — sempre administrador e ativo.</td>
+            {% else %}
             <td>
               <form method="post" action="{{ url_for('alterar_usuario', id_usuario=u.id) }}" class="linha-form compacta">
                 <select name="perfil" aria-label="Perfil de {{ u.nome }}">
@@ -53,6 +79,7 @@
                 <button type="submit" class="secundario">Redefinir</button>
               </form>
             </td>
+            {% endif %}
           </tr>
         {% endfor %}
       </tbody>
