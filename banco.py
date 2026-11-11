@@ -1,13 +1,17 @@
 """
 banco.py
 --------
-Tudo que conversa com o banco de dados (SQLite) fica neste arquivo.
+Conexão com o banco de dados (SQLite) e as regras do ESTOQUE.
 O app.py (as rotas do site) só chama as funções daqui e nunca escreve SQL.
 
 Regra mais importante do sistema:
     O saldo (quantidade de pijamas / metragem do rolo) NUNCA muda sem que uma
     linha seja gravada na tabela "movimentacoes". As duas coisas acontecem na
     MESMA transação: ou as duas são salvas, ou nenhuma é.
+
+Nas funções que gravam, o parâmetro "usuario" é o funcionário logado
+(um dicionário com pelo menos "login" e "perfil"). O login dele fica
+gravado em cada movimentação, para saber quem fez o quê.
 """
 
 import math
@@ -59,6 +63,10 @@ MOTIVOS_PERMITIDOS = {
     },
 }
 
+# Motivos que só o administrador pode usar. O ajuste de inventário corrige o
+# saldo "na mão", então fica restrito a quem responde pelo estoque.
+MOTIVOS_SO_ADMIN = {"ajuste"}
+
 
 class ErroEstoque(Exception):
     """Erro de regra de negócio (código inexistente, estoque insuficiente...).
@@ -99,6 +107,18 @@ def consultar_um(sql, parametros=()):
     return linhas[0] if linhas else None
 
 
+def executar(sql, parametros=()):
+    """Roda UM comando que altera o banco (INSERT/UPDATE) e salva.
+    Devolve quantas linhas foram alteradas."""
+    conexao = conectar()
+    try:
+        cursor = conexao.execute(sql, parametros)
+        conexao.commit()
+        return cursor.rowcount
+    finally:
+        conexao.close()
+
+
 def criar_tabelas():
     """Cria as tabelas se ainda não existirem. É chamada quando o sistema inicia."""
     conexao = conectar()
@@ -116,7 +136,8 @@ def criar_tabelas():
                 modelo      TEXT    NOT NULL,
                 tamanho     TEXT    NOT NULL,
                 cor         TEXT    NOT NULL,
-                quantidade  INTEGER NOT NULL DEFAULT 0 CHECK (quantidade >= 0)
+                quantidade  INTEGER NOT NULL DEFAULT 0 CHECK (quantidade >= 0),
+                ativo       INTEGER NOT NULL DEFAULT 1   -- 1 = ativo, 0 = desativado
             );
 
             CREATE TABLE IF NOT EXISTS rolos_tecido (
@@ -124,7 +145,8 @@ def criar_tabelas():
                 codigo          TEXT    UNIQUE,  -- preenchido logo após o INSERT (RL-000001)
                 tipo_tecido     TEXT    NOT NULL,
                 cor             TEXT    NOT NULL,
-                metragem_atual  REAL    NOT NULL DEFAULT 0 CHECK (metragem_atual >= 0)
+                metragem_atual  REAL    NOT NULL DEFAULT 0 CHECK (metragem_atual >= 0),
+                ativo           INTEGER NOT NULL DEFAULT 1
             );
 
             CREATE TABLE IF NOT EXISTS movimentacoes (
@@ -134,16 +156,45 @@ def criar_tabelas():
                 tipo         TEXT NOT NULL CHECK (tipo IN ('entrada', 'saida')),
                 quantidade   REAL NOT NULL CHECK (quantidade > 0),
                 data         TEXT NOT NULL,  -- formato 'AAAA-MM-DD HH:MM:SS'
-                motivo       TEXT NOT NULL
+                motivo       TEXT NOT NULL,
+                usuario      TEXT            -- login de quem fez a movimentação
+            );
+
+            CREATE TABLE IF NOT EXISTS usuarios (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                nome        TEXT    NOT NULL,
+                login       TEXT    NOT NULL UNIQUE,
+                senha_hash  TEXT    NOT NULL,   -- nunca a senha em si (ver usuarios.py)
+                perfil      TEXT    NOT NULL CHECK (perfil IN ('admin', 'operador')),
+                ativo       INTEGER NOT NULL DEFAULT 1
             );
 
             -- Índices deixam as buscas por código e por data mais rápidas
             CREATE INDEX IF NOT EXISTS idx_mov_codigo ON movimentacoes (codigo_item);
             CREATE INDEX IF NOT EXISTS idx_mov_data   ON movimentacoes (data);
         """)
+
+        # Bancos criados por versões antigas do sistema não têm estas colunas.
+        # O CREATE TABLE acima não altera tabelas que já existem, então
+        # acrescentamos as colunas que faltarem.
+        _adicionar_coluna_se_faltar(conexao, "produtos", "ativo", "INTEGER NOT NULL DEFAULT 1")
+        _adicionar_coluna_se_faltar(conexao, "rolos_tecido", "ativo", "INTEGER NOT NULL DEFAULT 1")
+        _adicionar_coluna_se_faltar(conexao, "movimentacoes", "usuario", "TEXT")
         conexao.commit()
     finally:
         conexao.close()
+
+
+def _adicionar_coluna_se_faltar(conexao, tabela, coluna, definicao):
+    """Acrescenta uma coluna numa tabela antiga, se ela ainda não existir.
+
+    O SQLite não aceita "?" no lugar de nomes de tabela/coluna, por isso o SQL
+    é montado com f-string. Isso só é seguro porque os nomes vêm escritos no
+    próprio código (criar_tabelas), NUNCA de algo digitado pelo usuário.
+    """
+    colunas = [linha["name"] for linha in conexao.execute(f"PRAGMA table_info({tabela})")]
+    if coluna not in colunas:
+        conexao.execute(f"ALTER TABLE {tabela} ADD COLUMN {coluna} {definicao}")
 
 
 # =====================================================================
@@ -184,6 +235,16 @@ def limpar_codigo(codigo):
     return codigo
 
 
+def limpar_texto(valor, nome_do_campo):
+    """Tira espaços das pontas e confere se o campo foi preenchido."""
+    texto = str(valor or "").strip()
+    if not texto:
+        raise ErroEstoque(f"Preencha o campo {nome_do_campo}.")
+    if len(texto) > 60:
+        raise ErroEstoque(f"O campo {nome_do_campo} pode ter no máximo 60 caracteres.")
+    return texto
+
+
 def converter_quantidade(valor, tipo_item, permitir_zero=False):
     """Converte o que foi digitado em número e valida.
 
@@ -204,7 +265,7 @@ def converter_quantidade(valor, tipo_item, permitir_zero=False):
             raise ErroEstoque("Pijama é contado em unidades inteiras.")
         numero = int(numero)
     else:
-        # Arredondar evita "lixo" de casas decimais (ex: 10 - 3.3 - 6.7 = 0.0000000000000018)
+        # Arredondar evita "lixo" de casas decimais (ex: 1 - 0.9 - 0.1 = -0.00000000000000003)
         numero = round(numero, 2)
 
     if numero < 0 or (numero == 0 and not permitir_zero):
@@ -212,6 +273,22 @@ def converter_quantidade(valor, tipo_item, permitir_zero=False):
     if numero > QUANTIDADE_MAXIMA:
         raise ErroEstoque(f"Quantidade muito alta ({valor}). Confira o que foi digitado.")
     return numero
+
+
+def motivos_permitidos_para(perfil):
+    """Os motivos que este perfil pode escolher (o operador não vê o "ajuste").
+
+    Devolve um dicionário no mesmo formato de MOTIVOS_PERMITIDOS.
+    """
+    resultado = {}
+    for tipo_item, por_tipo in MOTIVOS_PERMITIDOS.items():
+        resultado[tipo_item] = {}
+        for tipo, motivos in por_tipo.items():
+            resultado[tipo_item][tipo] = [
+                motivo for motivo in motivos
+                if perfil == "admin" or motivo not in MOTIVOS_SO_ADMIN
+            ]
+    return resultado
 
 
 # =====================================================================
@@ -254,21 +331,28 @@ def buscar_item(codigo):
     return None
 
 
-def listar_produtos():
-    return consultar("SELECT * FROM produtos ORDER BY modelo, tamanho, cor")
-
-
-def listar_rolos(somente_com_saldo=False):
-    """Lista os rolos. Com somente_com_saldo=True, esconde os rolos que já acabaram.
+def listar_produtos(somente_ativos=False):
+    """Lista os pijamas. Os ativos aparecem primeiro.
 
     O truque "(? = 0 OR ...)" deixa usar o MESMO SQL nos dois casos:
     se o parâmetro for 0, a condição é sempre verdadeira e nada é filtrado.
     """
     return consultar(
+        """SELECT * FROM produtos
+           WHERE (? = 0 OR ativo = 1)
+           ORDER BY ativo DESC, modelo, tamanho, cor""",
+        (1 if somente_ativos else 0,),
+    )
+
+
+def listar_rolos(somente_com_saldo=False, somente_ativos=False):
+    """Lista os rolos. Pode esconder os que acabaram e/ou os desativados."""
+    return consultar(
         """SELECT * FROM rolos_tecido
            WHERE (? = 0 OR metragem_atual > 0)
-           ORDER BY tipo_tecido, cor, codigo""",
-        (1 if somente_com_saldo else 0,),
+             AND (? = 0 OR ativo = 1)
+           ORDER BY ativo DESC, tipo_tecido, cor, codigo""",
+        (1 if somente_com_saldo else 0, 1 if somente_ativos else 0),
     )
 
 
@@ -313,12 +397,13 @@ def listar_movimentacoes(limite=50, codigo=""):
 
 
 def resumo():
-    """Números para os cartões do painel."""
+    """Números para os cartões do painel (só itens ativos)."""
     pijamas = consultar_um(
         """SELECT COUNT(*) AS skus,
                   COALESCE(SUM(quantidade), 0) AS unidades,
                   COALESCE(SUM(quantidade <= ?), 0) AS baixos
-           FROM produtos""",
+           FROM produtos
+           WHERE ativo = 1""",
         (LIMITE_PIJAMAS_BAIXO,),
     )
     tecido = consultar_um(
@@ -326,7 +411,7 @@ def resumo():
                   COALESCE(SUM(metragem_atual), 0) AS metros,
                   COALESCE(SUM(metragem_atual <= ?), 0) AS baixos
            FROM rolos_tecido
-           WHERE metragem_atual > 0""",
+           WHERE metragem_atual > 0 AND ativo = 1""",
         (LIMITE_METROS_BAIXO,),
     )
     # Observação: no SQLite, uma comparação (quantidade <= 5) vale 1 ou 0,
@@ -341,36 +426,36 @@ def resumo():
 
 
 # =====================================================================
-# Gravações (cadastro e movimentação)
+# Gravações (cadastro, edição e movimentação)
 # =====================================================================
 
-def _gravar_movimentacao(conexao, tipo_item, codigo, tipo, quantidade, motivo):
+def _gravar_movimentacao(conexao, tipo_item, codigo, tipo, quantidade, motivo, usuario):
     """Grava uma linha em movimentacoes usando uma conexão JÁ ABERTA.
 
     O "_" no começo do nome indica que é uma função interna deste arquivo:
     ela não faz commit, porque quem chamou decide quando salvar tudo junto.
     """
     conexao.execute(
-        """INSERT INTO movimentacoes (tipo_item, codigo_item, tipo, quantidade, data, motivo)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (tipo_item, codigo, tipo, quantidade, agora(), motivo),
+        """INSERT INTO movimentacoes
+               (tipo_item, codigo_item, tipo, quantidade, data, motivo, usuario)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (tipo_item, codigo, tipo, quantidade, agora(), motivo, usuario["login"]),
     )
 
 
-def cadastrar_produto(modelo, tamanho, cor, quantidade_inicial, codigo=""):
+def cadastrar_produto(modelo, tamanho, cor, quantidade_inicial, usuario, codigo=""):
     """Cadastra um pijama novo (combinação modelo + tamanho + cor).
 
     Se o código não for digitado, ele é gerado: PJ-<modelo>-<tamanho>-<cor>.
     Se houver quantidade inicial, grava também a movimentação de entrada.
     Devolve o código do pijama cadastrado.
     """
-    modelo, tamanho, cor = modelo.strip(), tamanho.strip().upper(), cor.strip()
-    if not modelo or not tamanho or not cor:
-        raise ErroEstoque("Preencha modelo, tamanho e cor.")
-
+    modelo = limpar_texto(modelo, "modelo")
+    tamanho = limpar_texto(tamanho, "tamanho").upper()
+    cor = limpar_texto(cor, "cor")
     quantidade = converter_quantidade(quantidade_inicial or 0, "produto", permitir_zero=True)
 
-    if codigo.strip():
+    if str(codigo).strip():
         codigo = limpar_codigo(codigo)
     else:
         codigo = gerar_codigo_produto(modelo, tamanho, cor)
@@ -387,7 +472,8 @@ def cadastrar_produto(modelo, tamanho, cor, quantidade_inicial, codigo=""):
             (codigo, modelo, tamanho, cor, quantidade),
         )
         if quantidade > 0:
-            _gravar_movimentacao(conexao, "produto", codigo, "entrada", quantidade, "estoque_inicial")
+            _gravar_movimentacao(conexao, "produto", codigo, "entrada", quantidade,
+                                 "estoque_inicial", usuario)
         conexao.commit()
     except sqlite3.IntegrityError:
         # IntegrityError aqui = violou o UNIQUE do código (já existe)
@@ -398,16 +484,15 @@ def cadastrar_produto(modelo, tamanho, cor, quantidade_inicial, codigo=""):
     return codigo
 
 
-def cadastrar_rolo(tipo_tecido, cor, metragem):
+def cadastrar_rolo(tipo_tecido, cor, metragem, usuario):
     """Cadastra um rolo novo e grava a entrada da metragem.
 
     O código é gerado a partir do id: id 1 -> 'RL-000001'.
     Como o id só existe depois do INSERT, fazemos INSERT e logo depois UPDATE,
     tudo na mesma transação. Devolve o código do rolo.
     """
-    tipo_tecido, cor = tipo_tecido.strip(), cor.strip()
-    if not tipo_tecido or not cor:
-        raise ErroEstoque("Preencha o tipo de tecido e a cor.")
+    tipo_tecido = limpar_texto(tipo_tecido, "tipo de tecido")
+    cor = limpar_texto(cor, "cor")
     metragem = converter_quantidade(metragem, "rolo")
 
     conexao = conectar()
@@ -418,7 +503,7 @@ def cadastrar_rolo(tipo_tecido, cor, metragem):
         )
         codigo = f"{PREFIXO_ROLO}{cursor.lastrowid:06d}"  # :06d = 6 dígitos, completando com zeros
         conexao.execute("UPDATE rolos_tecido SET codigo = ? WHERE id = ?", (codigo, cursor.lastrowid))
-        _gravar_movimentacao(conexao, "rolo", codigo, "entrada", metragem, "rolo_novo")
+        _gravar_movimentacao(conexao, "rolo", codigo, "entrada", metragem, "rolo_novo", usuario)
         conexao.commit()
     except Exception:
         conexao.rollback()
@@ -428,7 +513,49 @@ def cadastrar_rolo(tipo_tecido, cor, metragem):
     return codigo
 
 
-def registrar_movimentacao(codigo, tipo, quantidade, motivo):
+def editar_produto(codigo, modelo, tamanho, cor):
+    """Corrige modelo, tamanho ou cor de um pijama.
+
+    O CÓDIGO não muda: ele já está impresso nas etiquetas coladas nas peças.
+    A QUANTIDADE também não: saldo só muda por movimentação.
+    """
+    alteradas = executar(
+        "UPDATE produtos SET modelo = ?, tamanho = ?, cor = ? WHERE codigo = ?",
+        (limpar_texto(modelo, "modelo"), limpar_texto(tamanho, "tamanho").upper(),
+         limpar_texto(cor, "cor"), codigo),
+    )
+    if alteradas == 0:
+        raise ErroEstoque(f"Pijama {codigo} não encontrado.")
+
+
+def editar_rolo(codigo, tipo_tecido, cor):
+    """Corrige o tipo de tecido ou a cor de um rolo (código e metragem não mudam)."""
+    alteradas = executar(
+        "UPDATE rolos_tecido SET tipo_tecido = ?, cor = ? WHERE codigo = ?",
+        (limpar_texto(tipo_tecido, "tipo de tecido"), limpar_texto(cor, "cor"), codigo),
+    )
+    if alteradas == 0:
+        raise ErroEstoque(f"Rolo {codigo} não encontrado.")
+
+
+def definir_item_ativo(codigo, ativo):
+    """Desativa (ativo=False) ou reativa (ativo=True) um pijama ou rolo.
+
+    Não existe "excluir": o histórico de movimentações precisa continuar
+    apontando para o item. Desativado, ele some do painel e não aceita bipe.
+    """
+    item = buscar_item(codigo)
+    if item is None:
+        raise ErroEstoque(f"Código {codigo} não encontrado.")
+    valor = 1 if ativo else 0
+    if item["tipo_item"] == "produto":
+        executar("UPDATE produtos SET ativo = ? WHERE codigo = ?", (valor, item["codigo"]))
+    else:
+        executar("UPDATE rolos_tecido SET ativo = ? WHERE codigo = ?", (valor, item["codigo"]))
+    return item
+
+
+def registrar_movimentacao(codigo, tipo, quantidade, motivo, usuario):
     """Entrada ou saída de um item pelo código bipado.
 
     Devolve o item com o saldo já atualizado (para mostrar na tela).
@@ -440,10 +567,14 @@ def registrar_movimentacao(codigo, tipo, quantidade, motivo):
     item = buscar_item(codigo)
     if item is None:
         raise ErroEstoque(f"Código {codigo} não encontrado.")
+    if not item["ativo"]:
+        raise ErroEstoque(f"{item['descricao']} ({codigo}) está desativado.")
 
     tipo_item = item["tipo_item"]
     if motivo not in MOTIVOS_PERMITIDOS[tipo_item][tipo]:
         raise ErroEstoque("Motivo inválido para este item.")
+    if motivo in MOTIVOS_SO_ADMIN and usuario["perfil"] != "admin":
+        raise ErroEstoque(f"Só o administrador pode registrar '{MOTIVOS[motivo]}'.")
 
     quantidade = converter_quantidade(quantidade, tipo_item)
     # Na saída a variação é negativa: tira do estoque.
@@ -473,7 +604,7 @@ def registrar_movimentacao(codigo, tipo, quantidade, motivo):
                 f"Estoque insuficiente — saldo atual de {codigo}: {item['saldo']} {item['unidade']}"
             )
 
-        _gravar_movimentacao(conexao, tipo_item, codigo, tipo, quantidade, motivo)
+        _gravar_movimentacao(conexao, tipo_item, codigo, tipo, quantidade, motivo, usuario)
         conexao.commit()
     except Exception:
         conexao.rollback()  # desfaz o UPDATE se qualquer coisa deu errado
@@ -490,7 +621,9 @@ def registrar_movimentacao(codigo, tipo, quantidade, motivo):
 
 def relatorio_pijamas_baixos():
     return consultar(
-        "SELECT * FROM produtos WHERE quantidade <= ? ORDER BY quantidade, modelo",
+        """SELECT * FROM produtos
+           WHERE ativo = 1 AND quantidade <= ?
+           ORDER BY quantidade, modelo""",
         (LIMITE_PIJAMAS_BAIXO,),
     )
 
@@ -498,7 +631,7 @@ def relatorio_pijamas_baixos():
 def relatorio_rolos_acabando():
     return consultar(
         """SELECT * FROM rolos_tecido
-           WHERE metragem_atual > 0 AND metragem_atual <= ?
+           WHERE ativo = 1 AND metragem_atual > 0 AND metragem_atual <= ?
            ORDER BY metragem_atual""",
         (LIMITE_METROS_BAIXO,),
     )

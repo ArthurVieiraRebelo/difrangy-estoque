@@ -4,6 +4,8 @@
 {% block conteudo %}
 <h1>Pijamas</h1>
 
+{# Só o administrador cadastra itens. O operador vê apenas a lista. #}
+{% if eh_admin %}
 <section class="bloco">
   <h2>Cadastrar pijama</h2>
   <p class="dica">Cada combinação de <strong>modelo + tamanho + cor</strong> é um item com seu próprio código de barras.</p>
@@ -35,9 +37,13 @@
     {% for t in ['PP', 'P', 'M', 'G', 'GG', 'XG'] %}<option value="{{ t }}">{% endfor %}
   </datalist>
 </section>
+{% endif %}
 
 <section class="bloco">
-  <h2>Pijamas cadastrados ({{ produtos|length }})</h2>
+  <div class="cabecalho-bloco">
+    <h2>Pijamas cadastrados ({{ produtos|length }})</h2>
+    <a class="botao secundario" href="{{ url_for('exportar', relatorio='pijamas') }}">Exportar CSV</a>
+  </div>
   <div class="tabela-rolagem">
     <table>
       <thead>
@@ -45,15 +51,20 @@
       </thead>
       <tbody>
         {% for p in produtos %}
-          <tr>
-            <td class="codigo">{{ p.codigo }}</td>
+          {# Item desativado aparece apagado, com um selo "Desativado" #}
+          <tr class="{{ 'acabou' if not p.ativo }}">
+            <td class="codigo">
+              {{ p.codigo }}
+              {% if not p.ativo %}<span class="selo selo-inativo">Desativado</span>{% endif %}
+            </td>
             <td>{{ p.modelo }}</td>
             <td>{{ p.tamanho }}</td>
             <td>{{ p.cor }}</td>
-            <td class="num">{{ p.quantidade }}</td>
+            <td class="num">{{ p.quantidade|numero_br }}</td>
             <td class="acoes">
               <a href="{{ url_for('etiqueta', codigo=p.codigo) }}">Etiqueta</a>
               <a href="{{ url_for('movimentacoes', codigo=p.codigo) }}">Histórico</a>
+              {% if eh_admin %}<a href="{{ url_for('editar_item', codigo=p.codigo) }}">Editar</a>{% endif %}
             </td>
           </tr>
         {% else %}

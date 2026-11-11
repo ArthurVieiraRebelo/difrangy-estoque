@@ -46,7 +46,10 @@
 
 <div class="grade-2">
   <section class="bloco">
-    <h2>Consumo de tecido por mês <small>(cortes)</small></h2>
+    <div class="cabecalho-bloco">
+      <h2>Consumo de tecido por mês <small>(cortes)</small></h2>
+      <a class="botao secundario" href="{{ url_for('exportar', relatorio='consumo-tecido') }}">Exportar CSV</a>
+    </div>
     <div class="tabela-rolagem">
       <table>
         <thead><tr><th>Mês</th><th>Tecido</th><th>Cor</th><th class="num">Metros</th></tr></thead>
@@ -65,7 +68,10 @@
   </section>
 
   <section class="bloco">
-    <h2>Pijamas vendidos por mês</h2>
+    <div class="cabecalho-bloco">
+      <h2>Pijamas vendidos por mês</h2>
+      <a class="botao secundario" href="{{ url_for('exportar', relatorio='vendas') }}">Exportar CSV</a>
+    </div>
     <div class="tabela-rolagem">
       <table>
         <thead><tr><th>Mês</th><th>Modelo</th><th class="num">Unidades</th></tr></thead>

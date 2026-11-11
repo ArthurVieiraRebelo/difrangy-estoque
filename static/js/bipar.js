@@ -128,7 +128,18 @@ async function movimentar(codigo, quantidade, motivo) {
 
 // ---------- Etapa do rolo ----------
 
+/** O usuário logado tem algum motivo permitido para esta operação em rolo?
+ *  (O operador não tem: entrada em rolo existente só existe como ajuste.) */
+function podeMovimentarRolo() {
+  return MOTIVOS_PERMITIDOS.rolo[tipoEscolhido()].length > 0;
+}
+
 function abrirEtapaRolo(rolo) {
+  if (!podeMovimentarRolo()) {
+    mostrarResultado("✖ Entrada em rolo já cadastrado é feita só pelo administrador (ajuste de inventário).", false);
+    fecharEtapaRolo();
+    return;
+  }
   roloAtual = rolo;
   document.getElementById("rolo-codigo").textContent = rolo.codigo;
   document.getElementById("rolo-descricao").textContent =
@@ -204,7 +215,10 @@ document.addEventListener("keydown", (evento) => {
 for (const radio of document.querySelectorAll('input[name="tipo"]')) {
   radio.addEventListener("change", () => {
     preencherMotivos(motivoProduto, "produto");
-    if (roloAtual) preencherMotivos(motivoRolo, "rolo");
+    if (roloAtual) {
+      if (podeMovimentarRolo()) preencherMotivos(motivoRolo, "rolo");
+      else fecharEtapaRolo(); // trocou para uma operação que este usuário não pode fazer
+    }
     focarCampoCerto();
   });
 }

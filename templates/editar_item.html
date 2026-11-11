@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block titulo %}Editar {{ item.codigo }}{% endblock %}
+
+{% block conteudo %}
+<h1>Editar · {{ item.codigo }}</h1>
+
+<section class="bloco">
+  <p class="dica">
+    O <strong>código</strong> não muda, porque ele já está impresso nas etiquetas.
+    O <strong>saldo</strong> ({{ item.saldo|numero_br(2 if item.tipo_item == 'rolo' else 0) }} {{ item.unidade }})
+    só muda por movimentação: para corrigir, use <em>Ajuste de inventário</em> na tela Bipar.
+  </p>
+
+  <form method="post" class="formulario" autocomplete="off">
+    {% if item.tipo_item == 'produto' %}
+      <label>Modelo <input name="modelo" required value="{{ item.modelo }}"></label>
+      <label>Tamanho <input name="tamanho" required value="{{ item.tamanho }}"></label>
+      <label>Cor <input name="cor" required value="{{ item.cor }}"></label>
+    {% else %}
+      <label>Tipo de tecido <input name="tipo_tecido" required value="{{ item.tipo_tecido }}"></label>
+      <label>Cor <input name="cor" required value="{{ item.cor }}"></label>
+    {% endif %}
+    <button type="submit">Salvar</button>
+  </form>
+</section>
+
+<section class="bloco">
+  <h2>{{ 'Reativar' if not item.ativo else 'Desativar' }} item</h2>
+  {% if item.ativo %}
+    <p class="dica">Item desativado some do painel e não aceita mais bipe. O histórico continua guardado.</p>
+  {% else %}
+    <p class="dica">Este item está desativado. Reativando, ele volta ao painel e aceita bipe de novo.</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('ativar_desativar_item', codigo=item.codigo) }}">
+    <input type="hidden" name="ativo" value="{{ '0' if item.ativo else '1' }}">
+    <button type="submit" class="{{ 'perigo' if item.ativo else '' }}">
+      {{ 'Desativar' if item.ativo else 'Reativar' }} {{ item.codigo }}
+    </button>
+  </form>
+</section>
+{% endblock %}

@@ -11,21 +11,38 @@
   {% set pagina = request.endpoint %}
   <header class="topo">
     <a class="marca" href="{{ url_for('painel') }}">Difrangy <span>Estoque</span></a>
-    <nav class="menu">
-      <a href="{{ url_for('painel') }}" class="{{ 'ativo' if pagina == 'painel' }}">Painel</a>
-      <a href="{{ url_for('bipar') }}" class="{{ 'ativo' if pagina == 'bipar' }}">Bipar</a>
-      <a href="{{ url_for('produtos') }}" class="{{ 'ativo' if pagina == 'produtos' }}">Pijamas</a>
-      <a href="{{ url_for('rolos') }}" class="{{ 'ativo' if pagina == 'rolos' }}">Tecidos</a>
-      <a href="{{ url_for('movimentacoes') }}" class="{{ 'ativo' if pagina == 'movimentacoes' }}">Movimentações</a>
-      <a href="{{ url_for('relatorios') }}" class="{{ 'ativo' if pagina == 'relatorios' }}">Relatórios</a>
-    </nav>
+
+    {# g.usuario = funcionário logado (definido no app.py, em exigir_login) #}
+    {% if g.usuario %}
+      <nav class="menu">
+        <a href="{{ url_for('painel') }}" class="{{ 'ativo' if pagina == 'painel' }}">Painel</a>
+        <a href="{{ url_for('bipar') }}" class="{{ 'ativo' if pagina == 'bipar' }}">Bipar</a>
+        <a href="{{ url_for('produtos') }}" class="{{ 'ativo' if pagina == 'produtos' }}">Pijamas</a>
+        <a href="{{ url_for('rolos') }}" class="{{ 'ativo' if pagina == 'rolos' }}">Tecidos</a>
+        <a href="{{ url_for('movimentacoes') }}" class="{{ 'ativo' if pagina == 'movimentacoes' }}">Movimentações</a>
+        <a href="{{ url_for('relatorios') }}" class="{{ 'ativo' if pagina == 'relatorios' }}">Relatórios</a>
+        {% if eh_admin %}
+          <a href="{{ url_for('admin') }}" class="{{ 'ativo' if pagina == 'admin' }}">Administração</a>
+        {% endif %}
+      </nav>
+
+      <div class="usuario-logado">
+        <a href="{{ url_for('minha_senha') }}" title="Trocar minha senha">
+          {{ g.usuario.nome }} <small>({{ PERFIS[g.usuario.perfil] }})</small>
+        </a>
+        {# Sair é um formulário POST (e não um link) para que outro site não consiga deslogar ninguém #}
+        <form method="post" action="{{ url_for('sair') }}">
+          <button type="submit" class="botao-link">Sair</button>
+        </form>
+      </div>
+    {% endif %}
   </header>
 
   <main class="conteudo">
     {# Mensagens do flash() (sucesso/erro) aparecem aqui, em qualquer página #}
     {% with mensagens = get_flashed_messages(with_categories=true) %}
       {% for categoria, mensagem in mensagens %}
-        <div class="aviso aviso-{{ categoria }}">{{ mensagem }}</div>
+        <div class="aviso aviso-{{ categoria }}" role="status">{{ mensagem }}</div>
       {% endfor %}
     {% endwith %}
 

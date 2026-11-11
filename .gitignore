@@ -9,3 +9,9 @@ estoque.db-shm
 # Arquivos gerados pelo Python
 __pycache__/
 *.pyc
+
+# Chave que assina o login (gerada na primeira execução) — é secreta
+.chave_secreta
+
+# Cópias de segurança do banco (contêm o estoque real)
+backups/

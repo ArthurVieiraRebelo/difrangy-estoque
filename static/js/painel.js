@@ -17,6 +17,7 @@ async function atualizarPainel() {
     // Com tempo limite: se o servidor travar, o pedido é cancelado e o
     // painel tenta de novo, em vez de ficar parado para sempre.
     const resposta = await buscarComTempoLimite("/api/painel");
+    if (irParaLoginSeSessaoExpirou(resposta)) return;
     if (!resposta.ok) throw new Error(`HTTP ${resposta.status}`);
     const dados = await resposta.json();
 
@@ -115,7 +116,7 @@ function desenharMovimentacoes(movimentacoes) {
   corpo.replaceChildren();
 
   if (movimentacoes.length === 0) {
-    corpo.append(linhaVazia(6, "Nenhuma movimentação ainda."));
+    corpo.append(linhaVazia(7, "Nenhuma movimentação ainda."));
     return;
   }
   for (const m of movimentacoes) {
@@ -127,6 +128,7 @@ function desenharMovimentacoes(movimentacoes) {
       criarSeloTipo(m.tipo),
       criarCelula(formatarQuantidade(m.quantidade, m.tipo_item), "num"),
       criarCelula(MOTIVOS[m.motivo] || m.motivo),
+      criarCelula(m.usuario || "—", "codigo"), // "—" = movimentação de antes do login existir
     );
     corpo.append(tr);
   }
