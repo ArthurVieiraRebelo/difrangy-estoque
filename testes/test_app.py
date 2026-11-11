@@ -88,9 +88,10 @@ class TestePermissoes(TesteComCliente):
         self.assertEqual(banco.listar_produtos(), [])
 
     def test_operador_nao_ve_o_formulario_de_cadastro(self):
-        html = self.operador.get("/produtos").get_data(as_text=True)
-        self.assertNotIn("Cadastrar pijama", html)
-        self.assertIn("Cadastrar pijama", self.admin.get("/produtos").get_data(as_text=True))
+        for pagina in ["/produtos", "/rolos"]:
+            with self.subTest(pagina=pagina):
+                self.assertNotIn("modal-cadastro", self.operador.get(pagina).get_data(as_text=True))
+                self.assertIn("modal-cadastro", self.admin.get(pagina).get_data(as_text=True))
 
     def test_operador_bipa_e_fica_registrado(self):
         codigo = banco.cadastrar_produto("Floral", "M", "Azul", "5", ADMIN)
@@ -146,20 +147,37 @@ class TestePaginas(TesteComCliente):
     def test_todas_as_paginas_abrem(self):
         banco.cadastrar_produto("Floral", "M", "Azul", "5", ADMIN)
         for endereco in ["/", "/bipar", "/produtos", "/rolos", "/movimentacoes", "/relatorios",
-                         "/etiqueta/PJ-FLO-M-AZ", "/itens/PJ-FLO-M-AZ/editar", "/admin", "/minha-senha"]:
+                         "/etiquetas?codigo=PJ-FLO-M-AZ", "/itens/PJ-FLO-M-AZ/editar", "/admin", "/minha-senha"]:
             with self.subTest(endereco=endereco):
                 self.assertEqual(self.admin.get(endereco).status_code, 200)
 
     def test_codigo_inexistente_mostra_pagina_404(self):
-        resposta = self.admin.get("/etiqueta/NAOEXISTE")
+        resposta = self.admin.get("/itens/NAOEXISTE/editar")
         self.assertEqual(resposta.status_code, 404)
         self.assertIn("não existe", resposta.get_data(as_text=True))
 
-    def test_cadastro_pelo_formulario_redireciona_para_etiqueta(self):
+    def test_cadastro_volta_para_a_lista_com_o_item_ja_marcado(self):
         resposta = self.admin.post("/rolos", data={"tipo_tecido": "Malha", "cor": "Azul", "metragem": "50"})
         self.assertEqual(resposta.status_code, 302)
-        self.assertTrue(resposta.location.endswith("/etiqueta/RL-000001"))
+        self.assertTrue(resposta.location.endswith("/rolos?novo=RL-000001"))
         self.assertEqual(banco.listar_movimentacoes(limite=1)[0]["usuario"], "ana")
+
+        html = self.admin.get(resposta.location).get_data(as_text=True)
+        self.assertRegex(html, r'value="RL-000001"\s+form="form-etiquetas"[^>]*\s+checked')
+
+    def test_cadastro_com_erro_reabre_o_modal_com_o_que_foi_digitado(self):
+        resposta = self.admin.post("/produtos", data={"modelo": "Floral", "tamanho": "M", "cor": "Azul",
+                                                      "codigo": "RL-000001"})  # prefixo reservado
+        html = resposta.get_data(as_text=True)
+        self.assertEqual(resposta.status_code, 200)
+        self.assertIn("data-abrir", html)
+        self.assertIn('value="Floral"', html)
+        self.assertEqual(banco.listar_produtos(), [])
+
+    def test_operador_nao_recebe_o_modal_de_cadastro(self):
+        html = self.operador.get("/produtos").get_data(as_text=True)
+        self.assertNotIn("modal-cadastro", html)
+        self.assertIn("Gerar etiquetas", html)  # mas pode gerar etiquetas
 
     def test_editar_e_desativar_pelas_paginas(self):
         codigo = banco.cadastrar_produto("Floral", "M", "Azul", "5", ADMIN)
@@ -179,6 +197,36 @@ class TestePaginas(TesteComCliente):
     def test_imagem_do_codigo_de_barras(self):
         resposta = self.admin.get("/codigo-barras/PJ-FLO-M-AZ.png")
         self.assertEqual(resposta.mimetype, "image/png")
+
+
+class TesteEtiquetas(TesteComCliente):
+
+    def setUp(self):
+        super().setUp()
+        self.pijama = banco.cadastrar_produto("Floral", "M", "Azul", "5", ADMIN)
+        self.rolo = banco.cadastrar_rolo("Malha", "Azul", "50", ADMIN)
+
+    def contar_etiquetas(self, endereco):
+        return self.operador.get(endereco).get_data(as_text=True).count('class="etiqueta"')
+
+    def test_varios_itens_com_copias_diferentes(self):
+        endereco = f"/etiquetas?codigo={self.pijama}&copias=3&codigo={self.rolo}&copias=2"
+        self.assertEqual(self.contar_etiquetas(endereco), 5)
+
+    def test_sem_copias_imprime_uma_de_cada(self):
+        self.assertEqual(self.contar_etiquetas(f"/etiquetas?codigo={self.pijama}&codigo={self.rolo}"), 2)
+
+    def test_copias_invalidas_viram_numeros_seguros(self):
+        endereco = f"/etiquetas?codigo={self.pijama}&copias=abc&codigo={self.rolo}&copias=99999"
+        self.assertEqual(self.contar_etiquetas(endereco), 1 + 100)  # "abc" -> 1; 99999 -> 100
+
+    def test_codigo_repetido_ou_inexistente_e_ignorado(self):
+        endereco = f"/etiquetas?codigo={self.pijama}&codigo={self.pijama}&codigo=NAOEXISTE"
+        self.assertEqual(self.contar_etiquetas(endereco), 1)
+
+    def test_sem_nenhum_item_volta_com_aviso(self):
+        resposta = self.admin.get("/etiquetas")
+        self.assertEqual(resposta.status_code, 302)
 
 
 class TesteExportacao(TesteComCliente):

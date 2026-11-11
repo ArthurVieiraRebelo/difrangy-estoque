@@ -104,3 +104,32 @@ function criarSeloTipo(tipo) {
   td.append(selo);
   return td;
 }
+
+// ---------- Tema claro / escuro ----------
+// O tema atual fica no atributo data-tema da tag <html> (o CSS lê de lá).
+// A escolha é guardada no navegador (localStorage), então vale para todas
+// as páginas e continua escolhida no dia seguinte.
+
+const botaoTema = document.getElementById("botao-tema");
+
+function mostrarNomeDoTema() {
+  // O botão mostra para qual tema ele VAI mudar
+  const temaAtual = document.documentElement.dataset.tema;
+  document.getElementById("nome-tema").textContent = temaAtual === "escuro" ? "Claro" : "Escuro";
+}
+
+function alternarTema() {
+  const novoTema = document.documentElement.dataset.tema === "escuro" ? "claro" : "escuro";
+  document.documentElement.dataset.tema = novoTema;
+  try {
+    localStorage.setItem("tema", novoTema);
+  } catch {
+    // Navegador bloqueou o armazenamento: o tema muda, só não fica salvo
+  }
+  mostrarNomeDoTema();
+}
+
+if (botaoTema) {
+  botaoTema.addEventListener("click", alternarTema);
+  mostrarNomeDoTema();
+}

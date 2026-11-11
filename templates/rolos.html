@@ -2,64 +2,103 @@
 {% block titulo %}Tecidos{% endblock %}
 
 {% block conteudo %}
-<h1>Rolos de tecido</h1>
-
-{# Só o administrador cadastra rolos. O operador vê apenas a lista. #}
-{% if eh_admin %}
-<section class="bloco">
-  <h2>Cadastrar rolo novo</h2>
-  <p class="dica">Cada rolo recebe um código próprio (RL-000001, RL-000002…). Depois de cadastrar, imprima a etiqueta e cole no rolo.</p>
-
-  <form method="post" class="formulario" autocomplete="off">
-    <label>Tipo de tecido
-      <input name="tipo_tecido" list="lista-tipos" required value="{{ formulario.get('tipo_tecido', '') }}" placeholder="ex: Malha">
-    </label>
-    <label>Cor
-      <input name="cor" list="lista-cores" required value="{{ formulario.get('cor', '') }}" placeholder="ex: Azul">
-    </label>
-    <label>Metragem (m)
-      <input name="metragem" type="number" min="0.01" step="0.01" required value="{{ formulario.get('metragem', '') }}" placeholder="ex: 50">
-    </label>
-    <button type="submit">Cadastrar e gerar etiqueta</button>
-  </form>
-
-  <datalist id="lista-tipos">{% for t in tipos %}<option value="{{ t }}">{% endfor %}</datalist>
-  <datalist id="lista-cores">{% for c in cores %}<option value="{{ c }}">{% endfor %}</datalist>
-</section>
-{% endif %}
+<div class="cabecalho-pagina">
+  <h1>Rolos de tecido</h1>
+  {% if eh_admin %}
+    <button type="button" id="abrir-cadastro">+ Novo rolo</button>
+  {% endif %}
+</div>
 
 <section class="bloco">
   <div class="cabecalho-bloco">
     <h2>Rolos cadastrados ({{ rolos|length }})</h2>
     <a class="botao secundario" href="{{ url_for('exportar', relatorio='tecidos') }}">Exportar CSV</a>
   </div>
+
+  {# Barra para gerar as etiquetas dos rolos marcados (ver comentário em produtos.html) #}
+  <div class="barra-selecao">
+    <span id="contador-selecao" aria-live="polite">Marque os rolos para gerar as etiquetas.</span>
+    <form id="form-etiquetas" method="get" action="{{ url_for('etiquetas') }}">
+      <button type="submit" id="gerar-etiquetas">Gerar etiquetas</button>
+    </form>
+  </div>
+
   <div class="tabela-rolagem">
     <table>
       <thead>
-        <tr><th>Código</th><th>Tecido</th><th>Cor</th><th class="num">Metros</th><th></th></tr>
+        <tr>
+          <th class="coluna-selecao">
+            <input type="checkbox" id="selecionar-todos" aria-label="Marcar todos">
+          </th>
+          <th>Código</th><th>Tecido</th><th>Cor</th><th class="num">Metros</th><th></th>
+        </tr>
       </thead>
       <tbody>
         {% for r in rolos %}
-          {# Rolo que acabou (0 m) ou foi desativado aparece apagado #}
-          <tr class="{{ 'acabou' if r.metragem_atual == 0 or not r.ativo }}">
+          {# Rolo que acabou (0 m) ou foi desativado aparece apagado; o recém-cadastrado vem marcado #}
+          <tr class="{{ 'acabou' if r.metragem_atual == 0 or not r.ativo }} {{ 'linha-nova' if r.codigo == novo }}">
+            <td class="coluna-selecao">
+              <input type="checkbox" class="selecao-item" name="codigo" value="{{ r.codigo }}"
+                     form="form-etiquetas" aria-label="Marcar {{ r.codigo }}"
+                     {{ 'checked' if r.codigo == novo }}>
+            </td>
             <td class="codigo">
               {{ r.codigo }}
+              {% if r.codigo == novo %}<span class="selo selo-novo">Novo</span>{% endif %}
               {% if not r.ativo %}<span class="selo selo-inativo">Desativado</span>{% endif %}
             </td>
             <td>{{ r.tipo_tecido }}</td>
             <td>{{ r.cor }}</td>
             <td class="num">{{ r.metragem_atual|numero_br(2) }}</td>
             <td class="acoes">
-              <a href="{{ url_for('etiqueta', codigo=r.codigo) }}">Etiqueta</a>
               <a href="{{ url_for('movimentacoes', codigo=r.codigo) }}">Histórico</a>
               {% if eh_admin %}<a href="{{ url_for('editar_item', codigo=r.codigo) }}">Editar</a>{% endif %}
             </td>
           </tr>
         {% else %}
-          <tr class="vazio"><td colspan="5">Nenhum rolo cadastrado ainda.</td></tr>
+          <tr class="vazio"><td colspan="6">Nenhum rolo cadastrado ainda.</td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 </section>
+
+{# ---------- Janela (modal) de cadastro: só para o administrador ---------- #}
+{% if eh_admin %}
+<dialog id="modal-cadastro" class="modal" aria-labelledby="titulo-modal" {{ 'data-abrir' if abrir_modal }}>
+  <form method="post" autocomplete="off">
+    <div class="modal-cabecalho">
+      <h2 id="titulo-modal">Novo rolo de tecido</h2>
+      <button type="button" class="botao-fechar" data-fechar-modal aria-label="Fechar">×</button>
+    </div>
+
+    <div class="modal-corpo">
+      <p class="dica">Cada rolo recebe um código próprio (RL-000001, RL-000002…), gerado automaticamente.</p>
+      <div class="grade-campos">
+        <label>Tipo de tecido
+          <input name="tipo_tecido" list="lista-tipos" required value="{{ formulario.get('tipo_tecido', '') }}" placeholder="ex: Malha">
+        </label>
+        <label>Cor
+          <input name="cor" list="lista-cores" required value="{{ formulario.get('cor', '') }}" placeholder="ex: Azul">
+        </label>
+        <label>Metragem (m)
+          <input name="metragem" type="number" min="0.01" step="0.01" required value="{{ formulario.get('metragem', '') }}" placeholder="ex: 50">
+        </label>
+      </div>
+    </div>
+
+    <div class="modal-rodape">
+      <button type="button" class="secundario" data-fechar-modal>Cancelar</button>
+      <button type="submit">Cadastrar</button>
+    </div>
+  </form>
+
+  <datalist id="lista-tipos">{% for t in tipos %}<option value="{{ t }}">{% endfor %}</datalist>
+  <datalist id="lista-cores">{% for c in cores %}<option value="{{ c }}">{% endfor %}</datalist>
+</dialog>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/listas.js') }}"></script>
 {% endblock %}

@@ -1,22 +1,65 @@
 /* estilo.css — aparência do sistema inteiro.
-   As cores ficam em "variáveis" (--nome) no :root, para trocar num lugar só. */
+
+   TEMAS: todas as cores ficam em "variáveis" (--nome).
+   - :root               -> cores do tema CLARO (o padrão)
+   - [data-tema="escuro"] -> as mesmas variáveis com as cores do tema ESCURO
+   O atributo data-tema fica na tag <html> e é trocado pelo botão do topo
+   (ver comum.js). Como o resto do CSS só usa var(--nome), trocar o tema é
+   só trocar os valores das variáveis. */
 
 :root {
   --fundo: #f4f5f7;
   --superficie: #ffffff;
+  --campo: #ffffff;           /* fundo dos campos de formulário */
   --borda: #dfe2e6;
   --texto: #1f2933;
   --texto-suave: #61707e;
-  --destaque: #3d5a80;        /* azul do menu e botões */
+  --link: #3d5a80;
+  --destaque: #3d5a80;        /* azul do topo e dos botões */
   --destaque-escuro: #2c4260;
+  --neutro: #e6e9ee;          /* botões secundários e selos cinza */
+  --neutro-hover: #d6dbe2;
+  --codigo-fundo: #eef0f3;
   --ok: #1f7a4d;
   --ok-fundo: #e3f4ea;
   --erro: #b42318;
+  --erro-escuro: #8f1c13;
   --erro-fundo: #fde8e6;
   --alerta-fundo: #fff4d6;    /* linha com estoque baixo */
   --saida: #b4541a;
   --saida-fundo: #fdebdc;
+  --piscar: #b8e6c9;          /* linha que acabou de mudar no painel */
+  --selecionado: #e4ecf7;     /* linha marcada para gerar etiqueta */
+  --sombra: 0 10px 40px rgba(15, 23, 42, .25);
   --raio: 8px;
+  color-scheme: light;        /* campos, barras de rolagem etc. no tema claro */
+}
+
+[data-tema="escuro"] {
+  --fundo: #14181d;
+  --superficie: #1d232a;
+  --campo: #12161b;
+  --borda: #313a45;
+  --texto: #e4e8ec;
+  --texto-suave: #9aa6b2;
+  --link: #8fb3e0;
+  --destaque: #3d5a80;
+  --destaque-escuro: #2c4260;
+  --neutro: #2a323b;
+  --neutro-hover: #36404b;
+  --codigo-fundo: #2a323b;
+  --ok: #5cc994;
+  --ok-fundo: #173a2a;
+  --erro: #ff8a80;
+  --erro-escuro: #c9473d;
+  --erro-fundo: #3d1d1b;
+  --alerta-fundo: #3a3218;
+  --saida: #f0a35e;
+  --saida-fundo: #3b2717;
+  --piscar: #1f5a3c;
+  --selecionado: #22344a;
+  --sombra: 0 10px 40px rgba(0, 0, 0, .6);
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -32,7 +75,7 @@ body {
   line-height: 1.45;
 }
 
-a { color: var(--destaque); }
+a { color: var(--link); }
 
 h1 { font-size: 1.6rem; margin: 0 0 1rem; }
 h2 { font-size: 1.1rem; margin: 0 0 .75rem; }
@@ -43,25 +86,26 @@ h2 small { color: var(--texto-suave); font-weight: normal; font-size: .85rem; }
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: .5rem 1.5rem;
-  padding: .75rem 1.5rem;
+  gap: .5rem 1rem;
+  padding: .75rem 1.25rem;
   background: var(--destaque);
 }
 .marca { color: #fff; font-weight: 700; font-size: 1.15rem; text-decoration: none; }
 .marca span { font-weight: 400; opacity: .8; }
-.menu { display: flex; flex-wrap: wrap; gap: .25rem; }
+.menu { display: flex; flex-wrap: wrap; gap: .15rem; }
 .menu a {
   color: #fff;
   text-decoration: none;
-  padding: .4rem .75rem;
+  padding: .4rem .6rem;
   border-radius: var(--raio);
   opacity: .85;
 }
 .menu a:hover { background: var(--destaque-escuro); opacity: 1; }
 .menu a.ativo { background: var(--destaque-escuro); opacity: 1; font-weight: 600; }
 
-/* Nome do usuário logado + botão Sair, no canto direito do topo */
-.usuario-logado { margin-left: auto; display: flex; align-items: center; gap: .75rem; }
+/* Lado direito do topo: botão de tema, nome do usuário e Sair */
+.topo-direita { margin-left: auto; display: flex; align-items: center; gap: .6rem; }
+.usuario-logado { display: flex; align-items: center; gap: .6rem; }
 .usuario-logado a { color: #fff; text-decoration: none; }
 .usuario-logado a:hover { text-decoration: underline; }
 .usuario-logado small { opacity: .75; }
@@ -73,6 +117,13 @@ h2 small { color: var(--texto-suave); font-weight: normal; font-size: .85rem; }
   font-weight: 600;
 }
 .botao-link:hover { background: var(--destaque-escuro); }
+
+/* Botão de tema: mostra a lua no tema claro e o sol no tema escuro */
+.botao-tema { display: inline-flex; align-items: center; gap: .4rem; }
+.botao-tema svg { width: 1rem; height: 1rem; }
+.icone-sol { display: none; }
+[data-tema="escuro"] .icone-sol { display: inline; }
+[data-tema="escuro"] .icone-lua { display: none; }
 
 .conteudo { max-width: 1200px; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
 
@@ -134,10 +185,15 @@ tr.vazio td { color: var(--texto-suave); text-align: center; padding: 1.25rem; }
 tr.baixo { background: var(--alerta-fundo); }
 tr.acabou { color: var(--texto-suave); }
 
+/* Coluna da caixinha de seleção (para gerar etiquetas) */
+.coluna-selecao { width: 2.5rem; text-align: center; }
+.coluna-selecao input { width: 1.1rem; height: 1.1rem; cursor: pointer; }
+tr:has(.coluna-selecao input:checked) { background: var(--selecionado); }
+
 /* Linha que mudou desde a última atualização do painel "pisca" em verde */
 tr.mudou { animation: piscar 2.5s ease-out; }
 @keyframes piscar {
-  from { background: #b8e6c9; }
+  from { background: var(--piscar); }
   to   { background: transparent; }
 }
 
@@ -150,9 +206,10 @@ tr.mudou { animation: piscar 2.5s ease-out; }
 }
 .selo-entrada { background: var(--ok-fundo); color: var(--ok); }
 .selo-saida { background: var(--saida-fundo); color: var(--saida); }
-.selo-inativo { background: #e6e9ee; color: var(--texto-suave); margin-left: .35rem; font-family: system-ui, sans-serif; }
+.selo-inativo { background: var(--neutro); color: var(--texto-suave); margin-left: .35rem; font-family: system-ui, sans-serif; }
+.selo-novo { background: var(--ok-fundo); color: var(--ok); margin-left: .35rem; font-family: system-ui, sans-serif; }
 
-code { font-family: ui-monospace, Consolas, monospace; font-size: .85em; background: #eef0f3; padding: .1rem .35rem; border-radius: 4px; word-break: break-all; }
+code { font-family: ui-monospace, Consolas, monospace; font-size: .85em; background: var(--codigo-fundo); padding: .1rem .35rem; border-radius: 4px; word-break: break-all; }
 
 /* ---------- Formulários ---------- */
 label { display: flex; flex-direction: column; gap: .25rem; font-weight: 600; font-size: .9rem; }
@@ -162,11 +219,12 @@ input, select {
   padding: .5rem .65rem;
   border: 1px solid var(--borda);
   border-radius: var(--raio);
-  background: #fff;
+  background: var(--campo);
+  color: var(--texto);
   font-weight: normal;
   min-width: 0;
 }
-input:focus, select:focus { outline: 2px solid var(--destaque); outline-offset: 1px; }
+input:focus, select:focus { outline: 2px solid var(--link); outline-offset: 1px; }
 
 button {
   padding: .55rem 1.1rem;
@@ -178,11 +236,11 @@ button {
   cursor: pointer;
 }
 button:hover { background: var(--destaque-escuro); }
-button.secundario { background: #e6e9ee; color: var(--texto); }
-button.secundario:hover { background: #d6dbe2; }
-button.perigo { background: var(--erro); }
-button.perigo:hover { background: #8f1c13; }
-button:disabled { opacity: .6; cursor: wait; }
+button.secundario { background: var(--neutro); color: var(--texto); }
+button.secundario:hover { background: var(--neutro-hover); }
+button.perigo { background: var(--erro-escuro); }
+button.perigo:hover { background: var(--erro); }
+button:disabled { opacity: .5; cursor: not-allowed; }
 
 /* Link com cara de botão (ex: "Exportar CSV") */
 a.botao {
@@ -193,8 +251,8 @@ a.botao {
   text-decoration: none;
   white-space: nowrap;
 }
-a.botao.secundario { background: #e6e9ee; color: var(--texto); }
-a.botao.secundario:hover { background: #d6dbe2; }
+a.botao.secundario { background: var(--neutro); color: var(--texto); }
+a.botao.secundario:hover { background: var(--neutro-hover); }
 
 .formulario {
   display: grid;
@@ -213,7 +271,7 @@ a.botao.secundario:hover { background: #d6dbe2; }
 .caixa-estreita { max-width: 420px; margin: 2rem auto; }
 .formulario-coluna { display: flex; flex-direction: column; gap: .9rem; }
 
-/* Título do bloco com um botão no lado direito */
+/* Título do bloco com botões no lado direito */
 .cabecalho-bloco {
   display: flex;
   flex-wrap: wrap;
@@ -229,6 +287,60 @@ a.botao.secundario:hover { background: #d6dbe2; }
 .aviso { padding: .75rem 1rem; border-radius: var(--raio); margin-bottom: 1rem; font-weight: 600; }
 .aviso-sucesso { background: var(--ok-fundo); color: var(--ok); }
 .aviso-erro { background: var(--erro-fundo); color: var(--erro); }
+
+/* ---------- Barra de seleção (gerar etiquetas dos itens marcados) ---------- */
+.barra-selecao {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem 1rem;
+  padding: .6rem .9rem;
+  margin-bottom: .75rem;
+  border: 1px dashed var(--borda);
+  border-radius: var(--raio);
+  color: var(--texto-suave);
+}
+.barra-selecao form { margin: 0 0 0 auto; }
+
+/* ---------- Modal (janela de cadastro) ----------
+   Usamos a tag <dialog> do HTML: o navegador já cuida de mostrar por cima
+   da página, prender o foco do teclado dentro dela e fechar com Esc. */
+.modal {
+  width: min(560px, calc(100% - 2rem));
+  padding: 0;
+  border: 1px solid var(--borda);
+  border-radius: calc(var(--raio) + 4px);
+  background: var(--superficie);
+  color: var(--texto);
+  box-shadow: var(--sombra);
+}
+.modal::backdrop { background: rgba(10, 14, 20, .55); }
+.modal-cabecalho {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--borda);
+}
+.modal-cabecalho h2 { margin: 0; }
+.modal-corpo { padding: 1.1rem 1.25rem; }
+.modal-corpo .dica { margin-top: 0; }
+.modal-rodape {
+  display: flex;
+  justify-content: flex-end;
+  gap: .75rem;
+  padding: .9rem 1.25rem;
+  border-top: 1px solid var(--borda);
+}
+.grade-campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .9rem; }
+.botao-fechar {
+  background: transparent;
+  color: var(--texto-suave);
+  font-size: 1.4rem;
+  line-height: 1;
+  padding: .2rem .5rem;
+}
+.botao-fechar:hover { background: var(--neutro); color: var(--texto); }
 
 /* ---------- Tela de bipar ---------- */
 .bipar { max-width: 820px; }
@@ -252,7 +364,7 @@ a.botao.secundario:hover { background: #d6dbe2; }
 .campos-linha { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .9rem; margin-bottom: 1rem; }
 .campo-codigo input { font-size: 1.4rem; padding: .75rem; font-family: ui-monospace, Consolas, monospace; }
 
-.etapa-rolo { border: 2px solid var(--destaque); }
+.etapa-rolo { border: 2px solid var(--link); }
 .botoes { display: flex; flex-wrap: wrap; gap: .75rem; }
 
 .resultado {
@@ -265,23 +377,38 @@ a.botao.secundario:hover { background: #d6dbe2; }
 .resultado-ok { background: var(--ok-fundo); color: var(--ok); }
 .resultado-erro { background: var(--erro-fundo); color: var(--erro); }
 
-/* ---------- Etiquetas ---------- */
+/* ---------- Etiquetas ----------
+   A etiqueta é sempre branca com texto preto, nos dois temas: ela representa
+   o papel que vai ser impresso. */
+.lista-copias td:last-child { width: 8rem; }
+.lista-copias input { width: 6rem; }
 .folha-etiquetas { display: flex; flex-wrap: wrap; gap: 4mm; }
 .etiqueta {
   width: 62mm;
   padding: 2mm 3mm;
   background: #fff;
+  color: #000;
   border: 1px dashed #b8bfc8;
   text-align: center;
   break-inside: avoid;   /* não corta uma etiqueta no meio entre duas páginas */
 }
 .etiqueta-titulo { font-size: 9pt; font-weight: 600; margin-bottom: 1mm; }
-.etiqueta img { width: 100%; height: auto; display: block; }
+/* Altura FIXA (e não largura): assim todas as etiquetas ficam na mesma escala,
+   com barras da mesma espessura, seja o código curto (RL-000001) ou longo.
+   object-fit: contain encolhe sem deformar se um código muito longo não couber. */
+.etiqueta img {
+  display: block;
+  height: 18mm;
+  width: auto;
+  max-width: 100%;
+  margin: 0 auto;
+  object-fit: contain;
+}
 
-/* Na impressão, só as etiquetas aparecem */
+/* Na impressão, só as etiquetas aparecem (e sempre em fundo branco) */
 @media print {
   .topo, .nao-imprimir, .aviso { display: none !important; }
-  body { background: #fff; }
+  body { background: #fff; color: #000; }
   .conteudo { padding: 0; max-width: none; }
   .etiqueta { border-color: #ddd; }
 }

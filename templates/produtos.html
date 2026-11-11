@@ -2,32 +2,105 @@
 {% block titulo %}Pijamas{% endblock %}
 
 {% block conteudo %}
-<h1>Pijamas</h1>
+<div class="cabecalho-pagina">
+  <h1>Pijamas</h1>
+  {% if eh_admin %}
+    <button type="button" id="abrir-cadastro">+ Novo pijama</button>
+  {% endif %}
+</div>
 
-{# Só o administrador cadastra itens. O operador vê apenas a lista. #}
-{% if eh_admin %}
 <section class="bloco">
-  <h2>Cadastrar pijama</h2>
-  <p class="dica">Cada combinação de <strong>modelo + tamanho + cor</strong> é um item com seu próprio código de barras.</p>
+  <div class="cabecalho-bloco">
+    <h2>Pijamas cadastrados ({{ produtos|length }})</h2>
+    <a class="botao secundario" href="{{ url_for('exportar', relatorio='pijamas') }}">Exportar CSV</a>
+  </div>
 
-  {# method="post": envia para a mesma rota /produtos, que trata o POST em app.py #}
-  <form method="post" class="formulario" autocomplete="off">
-    <label>Modelo
-      <input name="modelo" list="lista-modelos" required value="{{ formulario.get('modelo', '') }}" placeholder="ex: Floral">
-    </label>
-    <label>Tamanho
-      <input name="tamanho" list="lista-tamanhos" required value="{{ formulario.get('tamanho', '') }}" placeholder="ex: M">
-    </label>
-    <label>Cor
-      <input name="cor" list="lista-cores" required value="{{ formulario.get('cor', '') }}" placeholder="ex: Azul">
-    </label>
-    <label>Quantidade inicial
-      <input name="quantidade" type="number" min="0" step="1" value="{{ formulario.get('quantidade', '0') }}">
-    </label>
-    <label>Código <small>(opcional)</small>
-      <input name="codigo" value="{{ formulario.get('codigo', '') }}" placeholder="automático: PJ-FLO-M-AZ">
-    </label>
-    <button type="submit">Cadastrar e gerar etiqueta</button>
+  {# Barra para gerar as etiquetas dos itens marcados.
+     As caixinhas da tabela pertencem a este formulário pelo atributo form="form-etiquetas",
+     mesmo estando em outro lugar da página. #}
+  <div class="barra-selecao">
+    <span id="contador-selecao" aria-live="polite">Marque os itens para gerar as etiquetas.</span>
+    <form id="form-etiquetas" method="get" action="{{ url_for('etiquetas') }}">
+      <button type="submit" id="gerar-etiquetas">Gerar etiquetas</button>
+    </form>
+  </div>
+
+  <div class="tabela-rolagem">
+    <table>
+      <thead>
+        <tr>
+          <th class="coluna-selecao">
+            <input type="checkbox" id="selecionar-todos" aria-label="Marcar todos">
+          </th>
+          <th>Código</th><th>Modelo</th><th>Tam.</th><th>Cor</th><th class="num">Qtd.</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in produtos %}
+          {# Item desativado aparece apagado; o recém-cadastrado vem marcado #}
+          <tr class="{{ 'acabou' if not p.ativo }} {{ 'linha-nova' if p.codigo == novo }}">
+            <td class="coluna-selecao">
+              <input type="checkbox" class="selecao-item" name="codigo" value="{{ p.codigo }}"
+                     form="form-etiquetas" aria-label="Marcar {{ p.codigo }}"
+                     {{ 'checked' if p.codigo == novo }}>
+            </td>
+            <td class="codigo">
+              {{ p.codigo }}
+              {% if p.codigo == novo %}<span class="selo selo-novo">Novo</span>{% endif %}
+              {% if not p.ativo %}<span class="selo selo-inativo">Desativado</span>{% endif %}
+            </td>
+            <td>{{ p.modelo }}</td>
+            <td>{{ p.tamanho }}</td>
+            <td>{{ p.cor }}</td>
+            <td class="num">{{ p.quantidade|numero_br }}</td>
+            <td class="acoes">
+              <a href="{{ url_for('movimentacoes', codigo=p.codigo) }}">Histórico</a>
+              {% if eh_admin %}<a href="{{ url_for('editar_item', codigo=p.codigo) }}">Editar</a>{% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr class="vazio"><td colspan="7">Nenhum pijama cadastrado ainda.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{# ---------- Janela (modal) de cadastro: só para o administrador ---------- #}
+{% if eh_admin %}
+{# data-abrir: o servidor pede para reabrir a janela quando o cadastro deu erro #}
+<dialog id="modal-cadastro" class="modal" aria-labelledby="titulo-modal" {{ 'data-abrir' if abrir_modal }}>
+  <form method="post" autocomplete="off">
+    <div class="modal-cabecalho">
+      <h2 id="titulo-modal">Novo pijama</h2>
+      <button type="button" class="botao-fechar" data-fechar-modal aria-label="Fechar">×</button>
+    </div>
+
+    <div class="modal-corpo">
+      <p class="dica">Cada combinação de <strong>modelo + tamanho + cor</strong> é um item com seu próprio código de barras.</p>
+      <div class="grade-campos">
+        <label>Modelo
+          <input name="modelo" list="lista-modelos" required value="{{ formulario.get('modelo', '') }}" placeholder="ex: Floral">
+        </label>
+        <label>Tamanho
+          <input name="tamanho" list="lista-tamanhos" required value="{{ formulario.get('tamanho', '') }}" placeholder="ex: M">
+        </label>
+        <label>Cor
+          <input name="cor" list="lista-cores" required value="{{ formulario.get('cor', '') }}" placeholder="ex: Azul">
+        </label>
+        <label>Quantidade inicial
+          <input name="quantidade" type="number" min="0" step="1" value="{{ formulario.get('quantidade', '0') }}">
+        </label>
+      </div>
+      <label style="margin-top: .9rem;">Código <small>(opcional — se ficar vazio, é gerado: PJ-FLO-M-AZ)</small>
+        <input name="codigo" value="{{ formulario.get('codigo', '') }}">
+      </label>
+    </div>
+
+    <div class="modal-rodape">
+      <button type="button" class="secundario" data-fechar-modal>Cancelar</button>
+      <button type="submit">Cadastrar</button>
+    </div>
   </form>
 
   {# <datalist> = sugestões que aparecem ao digitar, evitando "Floral" e "floral" diferentes #}
@@ -36,42 +109,10 @@
   <datalist id="lista-tamanhos">
     {% for t in ['PP', 'P', 'M', 'G', 'GG', 'XG'] %}<option value="{{ t }}">{% endfor %}
   </datalist>
-</section>
+</dialog>
 {% endif %}
+{% endblock %}
 
-<section class="bloco">
-  <div class="cabecalho-bloco">
-    <h2>Pijamas cadastrados ({{ produtos|length }})</h2>
-    <a class="botao secundario" href="{{ url_for('exportar', relatorio='pijamas') }}">Exportar CSV</a>
-  </div>
-  <div class="tabela-rolagem">
-    <table>
-      <thead>
-        <tr><th>Código</th><th>Modelo</th><th>Tam.</th><th>Cor</th><th class="num">Qtd.</th><th></th></tr>
-      </thead>
-      <tbody>
-        {% for p in produtos %}
-          {# Item desativado aparece apagado, com um selo "Desativado" #}
-          <tr class="{{ 'acabou' if not p.ativo }}">
-            <td class="codigo">
-              {{ p.codigo }}
-              {% if not p.ativo %}<span class="selo selo-inativo">Desativado</span>{% endif %}
-            </td>
-            <td>{{ p.modelo }}</td>
-            <td>{{ p.tamanho }}</td>
-            <td>{{ p.cor }}</td>
-            <td class="num">{{ p.quantidade|numero_br }}</td>
-            <td class="acoes">
-              <a href="{{ url_for('etiqueta', codigo=p.codigo) }}">Etiqueta</a>
-              <a href="{{ url_for('movimentacoes', codigo=p.codigo) }}">Histórico</a>
-              {% if eh_admin %}<a href="{{ url_for('editar_item', codigo=p.codigo) }}">Editar</a>{% endif %}
-            </td>
-          </tr>
-        {% else %}
-          <tr class="vazio"><td colspan="6">Nenhum pijama cadastrado ainda.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</section>
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/listas.js') }}"></script>
 {% endblock %}

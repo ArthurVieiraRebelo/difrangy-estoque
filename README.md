@@ -19,6 +19,7 @@ Sistema web de controle de estoque com leitura de código de barras, feito para 
 - **Edição e desativação de itens** sem perder o histórico.
 - **Exportação em CSV** do estoque, do histórico e dos relatórios, formatada para o Excel em português.
 - **Backup automático diário** do banco de dados, com download pela própria interface.
+- **Tema claro e escuro**, que segue a preferência do sistema operacional até o usuário escolher um tema.
 
 ## Como o estoque é controlado
 
@@ -116,6 +117,8 @@ Na primeira execução são criados automaticamente:
 
 Os três ficam fora do Git e não devem ser compartilhados.
 
+Para usar outra porta, defina a variável de ambiente `ESTOQUE_PORTA` (ex.: `ESTOQUE_PORTA=8080 python app.py`). Se a porta já estiver em uso, o sistema avisa e não inicia, o que normalmente significa que ele já está aberto em outro terminal.
+
 ## Testes
 
 ```bash
@@ -133,7 +136,7 @@ Os testes cobrem as regras de estoque (saldo negativo, arredondamento de metrage
 
 O código do pijama é gerado a partir das primeiras letras do modelo e da cor, sem acentos, e pode ser digitado manualmente no cadastro. O prefixo `RL-` é reservado para rolos.
 
-Depois de cada cadastro, o sistema abre a página da etiqueta, onde é possível escolher o número de cópias e imprimir.
+O cadastro é feito numa janela modal. O item recém-cadastrado já volta marcado na lista. Para imprimir, marque um ou vários itens e clique em **Gerar etiquetas**: a página de impressão permite definir o número de cópias de cada item. Todas as etiquetas saem na mesma escala, então as barras têm a mesma espessura em códigos curtos e longos.
 
 ![Etiquetas](docs/img/etiqueta.png)
 

@@ -32,7 +32,9 @@ import usuarios
 from etiquetas import gerar_png_codigo_barras
 
 PASTA_DO_PROJETO = Path(__file__).parent
-PORTA = 5000
+# Porta do sistema. Dá para trocar com a variável de ambiente ESTOQUE_PORTA
+# (útil para rodar uma cópia de teste sem atrapalhar o sistema em uso).
+PORTA = int(os.environ.get("ESTOQUE_PORTA", 5000))
 
 
 def carregar_chave_secreta():
@@ -239,6 +241,7 @@ def bipar():
 @app.route("/produtos", methods=["GET", "POST"])
 def produtos():
     formulario = {}
+    abrir_modal = False
     if request.method == "POST":
         exigir_admin()
         formulario = request.form
@@ -253,12 +256,16 @@ def produtos():
             )
         except banco.ErroEstoque as erro:
             flash(str(erro), "erro")
-            # Não redireciona: mostra a página de novo com o que foi digitado
+            # Não redireciona: mostra a página de novo com a janela de cadastro
+            # aberta e o que foi digitado, para só corrigir o campo errado.
+            abrir_modal = True
         else:
-            flash(f"Pijama cadastrado com o código {codigo}. Imprima a etiqueta abaixo.", "sucesso")
+            flash(f"Pijama {codigo} cadastrado e já marcado na lista. "
+                  "Clique em “Gerar etiquetas” para imprimir.", "sucesso")
             # Depois de um POST que deu certo, redirecionamos (padrão Post/Redirect/Get):
             # assim, se apertar F5, o navegador não reenvia o formulário.
-            return redirect(url_for("etiqueta", codigo=codigo))
+            # "novo" faz a lista já vir com o item recém-cadastrado marcado.
+            return redirect(url_for("produtos", novo=codigo))
 
     return render_template(
         "produtos.html",
@@ -266,12 +273,15 @@ def produtos():
         modelos=banco.listar_valores_distintos("modelo"),
         cores=banco.listar_valores_distintos("cor_produto"),
         formulario=formulario,
+        abrir_modal=abrir_modal,
+        novo=request.args.get("novo", ""),
     )
 
 
 @app.route("/rolos", methods=["GET", "POST"])
 def rolos():
     formulario = {}
+    abrir_modal = False
     if request.method == "POST":
         exigir_admin()
         formulario = request.form
@@ -284,9 +294,11 @@ def rolos():
             )
         except banco.ErroEstoque as erro:
             flash(str(erro), "erro")
+            abrir_modal = True
         else:
-            flash(f"Rolo cadastrado com o código {codigo}. Imprima a etiqueta e cole no rolo.", "sucesso")
-            return redirect(url_for("etiqueta", codigo=codigo))
+            flash(f"Rolo {codigo} cadastrado e já marcado na lista. "
+                  "Clique em “Gerar etiquetas” para imprimir e cole a etiqueta no rolo.", "sucesso")
+            return redirect(url_for("rolos", novo=codigo))
 
     return render_template(
         "rolos.html",
@@ -294,6 +306,8 @@ def rolos():
         tipos=banco.listar_valores_distintos("tipo_tecido"),
         cores=banco.listar_valores_distintos("cor_rolo"),
         formulario=formulario,
+        abrir_modal=abrir_modal,
+        novo=request.args.get("novo", ""),
     )
 
 
@@ -363,15 +377,50 @@ def relatorios():
     )
 
 
-@app.route("/etiqueta/<codigo>")
-def etiqueta(codigo):
-    item = banco.buscar_item(codigo)
-    if item is None:
-        abort(404)
-    # Quantas etiquetas iguais imprimir (entre 1 e 100)
-    copias = request.args.get("copias", 1, type=int)
-    copias = max(1, min(copias, 100))
-    return render_template("etiqueta.html", item=item, copias=copias)
+MAXIMO_COPIAS_POR_ITEM = 100
+MAXIMO_ITENS_POR_VEZ = 100
+
+
+def converter_copias(texto):
+    """Número de cópias digitado -> inteiro entre 1 e MAXIMO_COPIAS_POR_ITEM.
+    Se vier algo que não é número, usa 1."""
+    try:
+        copias = int(texto)
+    except (TypeError, ValueError):
+        return 1
+    return max(1, min(copias, MAXIMO_COPIAS_POR_ITEM))
+
+
+@app.route("/etiquetas")
+def etiquetas():
+    """Página de impressão das etiquetas dos itens marcados nas listas.
+
+    O endereço traz os códigos e, opcionalmente, as cópias de cada um,
+    na mesma ordem:  /etiquetas?codigo=PJ-FLO-M-AZ&copias=3&codigo=RL-000001&copias=1
+
+    getlist() pega TODOS os valores com o mesmo nome (o get() pegaria só o primeiro).
+    """
+    codigos = request.args.getlist("codigo")[:MAXIMO_ITENS_POR_VEZ]
+    copias_digitadas = request.args.getlist("copias")
+
+    selecionados = []
+    ja_incluidos = set()  # para não repetir o mesmo item se vier duas vezes
+    for posicao, codigo in enumerate(codigos):
+        item = banco.buscar_item(codigo)
+        if item is None or item["codigo"] in ja_incluidos:
+            continue
+        # Se não veio o número de cópias deste item, imprime 1
+        texto_copias = copias_digitadas[posicao] if posicao < len(copias_digitadas) else "1"
+        item["copias"] = converter_copias(texto_copias)
+        selecionados.append(item)
+        ja_incluidos.add(item["codigo"])
+
+    if not selecionados:
+        flash("Marque pelo menos um item na lista para gerar etiquetas.", "erro")
+        return redirect(url_for("produtos"))
+
+    total = sum(item["copias"] for item in selecionados)
+    return render_template("etiquetas.html", itens=selecionados, total=total)
 
 
 @app.route("/codigo-barras/<codigo>.png")
@@ -572,7 +621,23 @@ def descobrir_ip_na_rede():
         return "<IP-deste-computador>"
 
 
+def porta_esta_livre(porta):
+    """Testa se dá para usar a porta. Se o sistema já estiver aberto em outro
+    terminal, a porta está ocupada e o bind() dá erro."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as teste:
+        try:
+            teste.bind(("0.0.0.0", porta))
+            return True
+        except OSError:
+            return False
+
+
 if __name__ == "__main__":
+    if not porta_esta_livre(PORTA):
+        print(f"A porta {PORTA} já está em uso: o sistema provavelmente já está aberto em outro terminal.")
+        print(f"Use o que já está aberto (http://localhost:{PORTA}) ou feche o outro terminal com Ctrl+C.")
+        raise SystemExit(1)  # encerra com código de erro, sem a mensagem técnica do Python
+
     backup.iniciar_backup_automatico()
     print("Sistema de estoque no ar!")
     print(f"  Neste computador:     http://localhost:{PORTA}")

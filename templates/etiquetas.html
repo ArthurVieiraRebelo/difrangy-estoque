@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block titulo %}Etiquetas{% endblock %}
+
+{% block conteudo %}
+{# Tudo com a classe "nao-imprimir" some na hora de imprimir (ver @media print no CSS) #}
+<div class="nao-imprimir">
+  <h1>Etiquetas</h1>
+
+  <section class="bloco">
+    {# method="get": as cópias vão na URL, junto com os códigos (ver rota "etiquetas" no app.py) #}
+    <form method="get">
+      <div class="tabela-rolagem">
+        <table class="lista-copias">
+          <thead><tr><th>Código</th><th>Item</th><th>Cópias</th></tr></thead>
+          <tbody>
+            {% for item in itens %}
+              <tr>
+                <td class="codigo">{{ item.codigo }}</td>
+                <td>{{ item.descricao }}</td>
+                <td>
+                  <input type="hidden" name="codigo" value="{{ item.codigo }}">
+                  <input type="number" name="copias" min="1" max="100" value="{{ item.copias }}"
+                         aria-label="Cópias de {{ item.codigo }}">
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="cabecalho-bloco" style="margin-top: 1rem;">
+        <p class="dica" style="margin: 0;">
+          {{ total }} etiqueta{{ 's' if total != 1 }} no total.
+          Na janela de impressão, deixe a escala em 100% e as margens mínimas.
+        </p>
+        <div class="botoes">
+          <button type="submit" class="secundario">Atualizar cópias</button>
+          <button type="button" id="botao-imprimir">Imprimir</button>
+        </div>
+      </div>
+    </form>
+  </section>
+</div>
+
+<div class="folha-etiquetas">
+  {% for item in itens %}
+    {% for _ in range(item.copias) %}
+      <div class="etiqueta">
+        <div class="etiqueta-titulo">{{ item.descricao }}</div>
+        <img src="{{ url_for('imagem_codigo_barras', codigo=item.codigo) }}" alt="Código de barras {{ item.codigo }}">
+      </div>
+    {% endfor %}
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // window.print() abre a janela de impressão do navegador
+  document.getElementById("botao-imprimir").addEventListener("click", () => window.print());
+</script>
+{% endblock %}
