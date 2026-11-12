@@ -89,7 +89,8 @@ A escolha por SQLite e SQL sem ORM foi intencional: o volume de dados de uma fá
 ├── templates/          # páginas HTML (Jinja)
 ├── static/
 │   ├── css/estilo.css
-│   └── js/             # comum.js, painel.js (atualização), bipar.js (leitura)
+│   └── js/             # comum.js, painel.js (atualização), bipar.js (leitura),
+│                       # sugestoes.js (sugestões ao digitar), listas.js (cadastro e seleção)
 ├── testes/             # testes automatizados
 └── requirements.txt
 ```
@@ -125,7 +126,7 @@ Na primeira execução são criados automaticamente:
 
 Os três ficam fora do Git e não devem ser compartilhados.
 
-Para usar outra porta, defina a variável de ambiente `ESTOQUE_PORTA` (ex.: `ESTOQUE_PORTA=8080 python app.py`). Se a porta já estiver em uso, o sistema avisa e não inicia, o que normalmente significa que ele já está aberto em outro terminal.
+Para usar outra porta, defina a variável de ambiente `ESTOQUE_PORTA` (ex.: `ESTOQUE_PORTA=8080 python app.py`). Se a porta já estiver em uso, o sistema avisa e não inicia, o que normalmente significa que ele já está aberto em outro terminal. Fechar o sistema (Ctrl+C) e abrir de novo logo em seguida funciona normalmente.
 
 ## Testes
 
@@ -133,7 +134,7 @@ Para usar outra porta, defina a variável de ambiente `ESTOQUE_PORTA` (ex.: `EST
 python -m unittest -v
 ```
 
-Os testes cobrem as regras de estoque (saldo negativo, arredondamento de metragem, códigos duplicados ou reservados), login e permissões por perfil, a exportação CSV, o backup, as rotas da API e a renderização das páginas. Cada teste usa um banco temporário próprio, então o estoque real nunca é tocado.
+Os testes cobrem as regras de estoque (saldo negativo, arredondamento de metragem, códigos duplicados ou reservados, limite de estoque baixo de cada item), a correção do código digitado e as sugestões, login e permissões por perfil, a atualização de bancos de versões anteriores, a exportação CSV, o backup, as rotas da API e a renderização das páginas. Cada teste usa um banco temporário próprio, então o estoque real nunca é tocado.
 
 ## Códigos e etiquetas
 
