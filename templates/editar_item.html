@@ -12,6 +12,9 @@
     {% if item.tipo_item == 'produto' %}
       <br>Em <strong>Estoque baixo com até</strong>, informe com quantas unidades (ou menos) este pijama
       deve aparecer como estoque baixo no painel e nos relatórios. Use um número maior para os que vendem mais.
+    {% else %}
+      <br>Em <strong>Quase acabando com até</strong>, informe com quantos metros (ou menos) este rolo
+      deve aparecer como quase acabando no painel e nos relatórios. Use um número maior para os tecidos mais usados.
     {% endif %}
   </p>
 
@@ -26,6 +29,9 @@
     {% else %}
       <label>Tipo de tecido <input name="tipo_tecido" required value="{{ item.tipo_tecido }}"></label>
       <label>Cor <input name="cor" required value="{{ item.cor }}"></label>
+      <label>Quase acabando com até <small>(m)</small>
+        <input name="limite_baixo" type="number" min="0" step="0.01" required value="{{ item.limite_baixo }}">
+      </label>
     {% endif %}
     <button type="submit">Salvar</button>
   </form>

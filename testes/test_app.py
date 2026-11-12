@@ -138,7 +138,7 @@ class TesteApi(TesteComCliente):
 
     def test_painel_traz_todas_as_partes(self):
         dados = self.admin.get("/api/painel").get_json()
-        for chave in ["resumo", "produtos", "rolos", "movimentacoes", "limites"]:
+        for chave in ["resumo", "produtos", "rolos", "movimentacoes"]:
             self.assertIn(chave, dados)
 
 
@@ -241,7 +241,7 @@ class TesteExportacao(TesteComCliente):
         self.assertEqual(resposta.mimetype, "text/csv")
         self.assertIn("attachment", resposta.headers["Content-Disposition"])
         self.assertTrue(texto.startswith("﻿"))         # BOM: acentos certos no Excel
-        self.assertIn(f"{rolo};Algodão;Azul;12,50;Ativo", texto)  # ; e vírgula decimal
+        self.assertIn(f"{rolo};Algodão;Azul;12,50;3,00;Ativo", texto)  # ; e vírgula decimal
 
     def test_csv_nao_deixa_executar_formula(self):
         banco.cadastrar_produto("=HIPERLINK(1)", "M", "Azul", "1", ADMIN, codigo="PJ-TESTE")

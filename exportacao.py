@@ -55,9 +55,10 @@ def csv_pijamas(produtos):
 
 def csv_rolos(rolos):
     return _gerar_csv(
-        ["Código", "Tecido", "Cor", "Metros", "Situação"],
+        ["Código", "Tecido", "Cor", "Metros", "Quase acabando com até (m)", "Situação"],
         [[_texto_seguro(r["codigo"]), _texto_seguro(r["tipo_tecido"]), _texto_seguro(r["cor"]),
-          _numero(r["metragem_atual"], 2), "Ativo" if r["ativo"] else "Desativado"]
+          _numero(r["metragem_atual"], 2), _numero(r["limite_baixo"], 2),
+          "Ativo" if r["ativo"] else "Desativado"]
          for r in rolos],
     )
 

@@ -27,11 +27,10 @@ from pathlib import Path
 CAMINHO_BANCO = Path(os.environ.get("ESTOQUE_DB", Path(__file__).parent / "estoque.db"))
 
 # "Estoque baixo" = saldo menor ou igual ao limite.
-# Pijamas: cada um tem o SEU limite (coluna produtos.limite_baixo), porque uns
-# vendem mais que outros. O valor abaixo é só o que vem preenchido num pijama novo.
-LIMITE_PIJAMAS_BAIXO = 5
-# Rolos: um limite só, para todos
-LIMITE_METROS_BAIXO = 3.0
+# Cada pijama e cada rolo tem o SEU limite (coluna limite_baixo), porque uns
+# saem mais que outros. Estes valores são só o que vem preenchido num item novo.
+LIMITE_PIJAMAS_BAIXO = 5      # unidades
+LIMITE_METROS_BAIXO = 3.0     # metros
 
 # Proteções contra erro de digitação (ex: bipar o código no campo de quantidade)
 QUANTIDADE_MAXIMA = 100_000      # por movimentação (unidades ou metros)
@@ -151,7 +150,9 @@ def criar_tabelas():
                 tipo_tecido     TEXT    NOT NULL,
                 cor             TEXT    NOT NULL,
                 metragem_atual  REAL    NOT NULL DEFAULT 0 CHECK (metragem_atual >= 0),
-                ativo           INTEGER NOT NULL DEFAULT 1
+                ativo           INTEGER NOT NULL DEFAULT 1,
+                -- "quase acabando" quando metragem_atual <= limite_baixo (cada rolo tem o seu)
+                limite_baixo    REAL    NOT NULL CHECK (limite_baixo >= 0)
             );
 
             CREATE TABLE IF NOT EXISTS movimentacoes (
@@ -194,11 +195,15 @@ def criar_tabelas():
         _adicionar_coluna_se_faltar(conexao, "rolos_tecido", "ativo", "INTEGER NOT NULL DEFAULT 1")
         _adicionar_coluna_se_faltar(conexao, "movimentacoes", "usuario", "TEXT")
         _adicionar_coluna_se_faltar(conexao, "usuarios", "master", "INTEGER NOT NULL DEFAULT 0")
-        # Os pijamas que já existiam ficam com o limite padrão (5), que era o
-        # limite único das versões antigas. Assim nada muda até o admin alterar.
+        # Os pijamas e rolos que já existiam ficam com o limite padrão (5 un. e 3 m),
+        # que era o limite único das versões antigas. Nada muda até o admin alterar.
         _adicionar_coluna_se_faltar(
             conexao, "produtos", "limite_baixo",
             f"INTEGER NOT NULL DEFAULT {LIMITE_PIJAMAS_BAIXO} CHECK (limite_baixo >= 0)",
+        )
+        _adicionar_coluna_se_faltar(
+            conexao, "rolos_tecido", "limite_baixo",
+            f"REAL NOT NULL DEFAULT {LIMITE_METROS_BAIXO} CHECK (limite_baixo >= 0)",
         )
 
         # Se ainda não existe master (banco de uma versão antiga), o administrador
@@ -303,18 +308,30 @@ def converter_quantidade(valor, tipo_item, permitir_zero=False):
     return numero
 
 
-def converter_limite_baixo(valor):
-    """Valida o "estoque baixo com até X unidades" digitado no cadastro/edição.
+def converter_limite_baixo(valor, tipo_item="produto"):
+    """Valida o "estoque baixo com até X" digitado no cadastro/edição.
 
-    Vazio -> o padrão (LIMITE_PIJAMAS_BAIXO). Zero vale: avisa só quando acabar.
+    - Pijama: unidades inteiras. Vazio -> LIMITE_PIJAMAS_BAIXO.
+    - Rolo: metros, até 2 casas, aceita vírgula ("2,5"). Vazio -> LIMITE_METROS_BAIXO.
+    Zero vale: avisa só quando acabar.
     """
     texto = str(valor if valor is not None else "").strip()
-    if not texto:
-        return LIMITE_PIJAMAS_BAIXO
-    try:
-        numero = int(texto)  # int("2.5") dá erro: o limite é em unidades inteiras
-    except ValueError:
-        raise ErroEstoque(f"Estoque baixo inválido: '{valor}'. Use um número inteiro, ex: 5.")
+    if tipo_item == "produto":
+        if not texto:
+            return LIMITE_PIJAMAS_BAIXO
+        try:
+            numero = int(texto)  # int("2.5") dá erro: o limite é em unidades inteiras
+        except ValueError:
+            raise ErroEstoque(f"Estoque baixo inválido: '{valor}'. Use um número inteiro, ex: 5.")
+    else:
+        if not texto:
+            return LIMITE_METROS_BAIXO
+        try:
+            numero = round(float(texto.replace(",", ".")), 2)
+        except ValueError:
+            raise ErroEstoque(f"Limite em metros inválido: '{valor}'. Use um número, ex: 2,5.")
+        if not math.isfinite(numero):  # bloqueia "inf" e "nan"
+            raise ErroEstoque(f"Limite em metros inválido: '{valor}'. Use um número, ex: 2,5.")
     if numero < 0:
         raise ErroEstoque("O estoque baixo não pode ser negativo.")
     if numero > QUANTIDADE_MAXIMA:
@@ -575,10 +592,9 @@ def resumo():
     tecido = consultar_um(
         """SELECT COUNT(*) AS rolos,
                   COALESCE(SUM(metragem_atual), 0) AS metros,
-                  COALESCE(SUM(metragem_atual <= ?), 0) AS baixos
+                  COALESCE(SUM(metragem_atual <= limite_baixo), 0) AS baixos
            FROM rolos_tecido
-           WHERE metragem_atual > 0 AND ativo = 1""",
-        (LIMITE_METROS_BAIXO,),
+           WHERE metragem_atual > 0 AND ativo = 1"""
     )
     # Observação: no SQLite, uma comparação (quantidade <= limite_baixo) vale 1 ou 0,
     # então SUM(comparação) conta quantas linhas atendem à condição.
@@ -657,22 +673,26 @@ def cadastrar_produto(modelo, tamanho, cor, quantidade_inicial, usuario, codigo=
     return codigo
 
 
-def cadastrar_rolo(tipo_tecido, cor, metragem, usuario):
+def cadastrar_rolo(tipo_tecido, cor, metragem, usuario, limite_baixo=""):
     """Cadastra um rolo novo e grava a entrada da metragem.
 
     O código é gerado a partir do id: id 1 -> 'RL-000001'.
     Como o id só existe depois do INSERT, fazemos INSERT e logo depois UPDATE,
-    tudo na mesma transação. Devolve o código do rolo.
+    tudo na mesma transação.
+    limite_baixo: com quantos metros (ou menos) ele aparece como "quase acabando".
+    Devolve o código do rolo.
     """
     tipo_tecido = limpar_texto(tipo_tecido, "tipo de tecido")
     cor = limpar_texto(cor, "cor")
     metragem = converter_quantidade(metragem, "rolo")
+    limite_baixo = converter_limite_baixo(limite_baixo, "rolo")
 
     conexao = conectar()
     try:
         cursor = conexao.execute(
-            "INSERT INTO rolos_tecido (tipo_tecido, cor, metragem_atual) VALUES (?, ?, ?)",
-            (tipo_tecido, cor, metragem),
+            """INSERT INTO rolos_tecido (tipo_tecido, cor, metragem_atual, limite_baixo)
+               VALUES (?, ?, ?, ?)""",
+            (tipo_tecido, cor, metragem, limite_baixo),
         )
         codigo = f"{PREFIXO_ROLO}{cursor.lastrowid:06d}"  # :06d = 6 dígitos, completando com zeros
         conexao.execute("UPDATE rolos_tecido SET codigo = ? WHERE id = ?", (codigo, cursor.lastrowid))
@@ -706,11 +726,15 @@ def editar_produto(codigo, modelo, tamanho, cor, limite_baixo=None):
         raise ErroEstoque(f"Pijama {codigo} não encontrado.")
 
 
-def editar_rolo(codigo, tipo_tecido, cor):
-    """Corrige o tipo de tecido ou a cor de um rolo (código e metragem não mudam)."""
+def editar_rolo(codigo, tipo_tecido, cor, limite_baixo=None):
+    """Corrige o tipo de tecido, a cor e o limite de "quase acabando" de um rolo.
+    Código e metragem não mudam. limite_baixo=None mantém o limite que já estava."""
+    novo_limite = None if limite_baixo is None else converter_limite_baixo(limite_baixo, "rolo")
     alteradas = executar(
-        "UPDATE rolos_tecido SET tipo_tecido = ?, cor = ? WHERE codigo = ?",
-        (limpar_texto(tipo_tecido, "tipo de tecido"), limpar_texto(cor, "cor"), codigo),
+        """UPDATE rolos_tecido SET tipo_tecido = ?, cor = ?,
+                                   limite_baixo = COALESCE(?, limite_baixo)
+           WHERE codigo = ?""",
+        (limpar_texto(tipo_tecido, "tipo de tecido"), limpar_texto(cor, "cor"), novo_limite, codigo),
     )
     if alteradas == 0:
         raise ErroEstoque(f"Rolo {codigo} não encontrado.")
@@ -836,11 +860,12 @@ def relatorio_pijamas_baixos():
 
 
 def relatorio_rolos_acabando():
+    """Rolos ativos com metragem menor ou igual ao limite de CADA um.
+    Rolo com 0 m já acabou: não entra (ele não está "acabando")."""
     return consultar(
         """SELECT * FROM rolos_tecido
-           WHERE ativo = 1 AND metragem_atual > 0 AND metragem_atual <= ?
-           ORDER BY metragem_atual""",
-        (LIMITE_METROS_BAIXO,),
+           WHERE ativo = 1 AND metragem_atual > 0 AND metragem_atual <= limite_baixo
+           ORDER BY metragem_atual"""
     )
 
 

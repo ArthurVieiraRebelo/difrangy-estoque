@@ -24,13 +24,17 @@
           <th class="coluna-selecao">
             <input type="checkbox" id="selecionar-todos" aria-label="Marcar todos">
           </th>
-          <th>Código</th><th>Tecido</th><th>Cor</th><th class="num">Metros</th><th></th>
+          <th>Código</th><th>Tecido</th><th>Cor</th><th class="num">Metros</th>
+          <th class="num" title="O rolo aparece como quase acabando com esta metragem ou menos">Baixo com até</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
         {% for r in rolos %}
-          {# Rolo que acabou (0 m) ou foi desativado aparece apagado; o recém-cadastrado vem marcado #}
-          <tr class="{{ 'acabou' if r.metragem_atual == 0 or not r.ativo }} {{ 'linha-nova' if r.codigo == novo }}">
+          {# Rolo que acabou (0 m) ou foi desativado aparece apagado; o recém-cadastrado vem marcado;
+             o ativo quase acabando fica amarelo, como no painel #}
+          <tr class="{{ 'acabou' if r.metragem_atual == 0 or not r.ativo }} {{ 'linha-nova' if r.codigo == novo }}
+                     {{ 'baixo' if r.ativo and 0 < r.metragem_atual <= r.limite_baixo }}">
             <td class="coluna-selecao">
               <input type="checkbox" class="selecao-item" name="codigo" value="{{ r.codigo }}"
                      form="form-etiquetas" aria-label="Marcar {{ r.codigo }}"
@@ -44,13 +48,14 @@
             <td>{{ r.tipo_tecido }}</td>
             <td>{{ r.cor }}</td>
             <td class="num">{{ r.metragem_atual|numero_br(2) }}</td>
+            <td class="num">{{ r.limite_baixo|numero_br(2) }} m</td>
             <td class="acoes">
               <a href="{{ url_for('movimentacoes', codigo=r.codigo) }}">Histórico</a>
               {% if eh_admin %}<a href="{{ url_for('editar_item', codigo=r.codigo) }}">Editar</a>{% endif %}
             </td>
           </tr>
         {% else %}
-          <tr class="vazio"><td colspan="6">Nenhum rolo cadastrado ainda.</td></tr>
+          <tr class="vazio"><td colspan="7">Nenhum rolo cadastrado ainda.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -78,7 +83,15 @@
         <label>Metragem (m)
           <input name="metragem" type="number" min="0.01" step="0.01" required value="{{ formulario.get('metragem', '') }}" placeholder="ex: 50">
         </label>
+        <label>Quase acabando com até <small>(m)</small>
+          <input name="limite_baixo" type="number" min="0" step="0.01"
+                 value="{{ formulario.get('limite_baixo', limite_padrao) }}">
+        </label>
       </div>
+      <p class="dica" style="margin-top: .6rem;">
+        Com essa metragem ou menos, o rolo aparece como <strong>quase acabando</strong> no painel e nos relatórios.
+        Para os tecidos mais usados, use um número maior.
+      </p>
     </div>
 
     <div class="modal-rodape">

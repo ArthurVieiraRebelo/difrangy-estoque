@@ -1,4 +1,4 @@
-"""Testes do limite de estoque baixo definido para CADA pijama."""
+"""Testes do limite de estoque baixo definido para CADA pijama e CADA rolo."""
 
 import sqlite3
 import unittest
@@ -70,6 +70,62 @@ class TesteLimiteNoBanco(TesteComBancoLimpo):
             banco.executar("UPDATE produtos SET limite_baixo = -1")
 
 
+class TesteLimiteDosRolos(TesteComBancoLimpo):
+
+    def test_rolo_novo_vem_com_o_limite_padrao(self):
+        codigo = banco.cadastrar_rolo("Malha", "Azul", "50", ADMIN)
+        self.assertEqual(banco.buscar_rolo(codigo)["limite_baixo"], banco.LIMITE_METROS_BAIXO)
+
+    def test_limite_em_metros_aceita_virgula(self):
+        codigo = banco.cadastrar_rolo("Malha", "Azul", "50", ADMIN, limite_baixo="7,5")
+        self.assertEqual(banco.buscar_rolo(codigo)["limite_baixo"], 7.5)
+
+    def test_cada_rolo_usa_o_seu_limite(self):
+        # Os dois têm 8 m, mas só o tecido mais usado (limite 10 m) está acabando
+        mais_usado = banco.cadastrar_rolo("Malha", "Azul", "8", ADMIN, limite_baixo="10")
+        menos_usado = banco.cadastrar_rolo("Seda", "Branco", "8", ADMIN, limite_baixo="2")
+
+        acabando = [r["codigo"] for r in banco.relatorio_rolos_acabando()]
+        self.assertEqual(acabando, [mais_usado])
+        self.assertNotIn(menos_usado, acabando)
+        self.assertEqual(banco.resumo()["itens_baixos"], 1)
+
+    def test_metragem_igual_ao_limite_ja_esta_acabando(self):
+        codigo = banco.cadastrar_rolo("Malha", "Azul", "10", ADMIN, limite_baixo="4,5")
+        banco.registrar_movimentacao(codigo, "saida", "5,5", "corte", ADMIN)  # sobra 4,5 m
+        self.assertEqual([r["codigo"] for r in banco.relatorio_rolos_acabando()], [codigo])
+
+    def test_rolo_que_acabou_nao_conta_como_acabando(self):
+        codigo = banco.cadastrar_rolo("Malha", "Azul", "2", ADMIN, limite_baixo="5")
+        banco.registrar_movimentacao(codigo, "saida", "2", "corte", ADMIN)   # 0 m: acabou
+        self.assertEqual(banco.relatorio_rolos_acabando(), [])
+        self.assertEqual(banco.resumo()["itens_baixos"], 0)
+
+    def test_editar_o_limite_do_rolo(self):
+        codigo = banco.cadastrar_rolo("Malha", "Azul", "8", ADMIN)
+        banco.editar_rolo(codigo, "Malha", "Azul", "12,25")
+        self.assertEqual(banco.buscar_rolo(codigo)["limite_baixo"], 12.25)
+        self.assertEqual(banco.resumo()["itens_baixos"], 1)
+
+    def test_editar_rolo_sem_informar_o_limite_mantem_o_atual(self):
+        codigo = banco.cadastrar_rolo("Malha", "Azul", "8", ADMIN, limite_baixo="6")
+        banco.editar_rolo(codigo, "Malha Penteada", "Azul")
+        self.assertEqual(banco.buscar_rolo(codigo)["limite_baixo"], 6)
+
+    def test_limite_do_rolo_invalido(self):
+        for digitado in ["-1", "abc", "inf", "nan", "999999999"]:
+            with self.subTest(digitado=digitado):
+                with self.assertRaises(banco.ErroEstoque):
+                    banco.cadastrar_rolo("Malha", "Azul", "8", ADMIN, limite_baixo=digitado)
+        self.assertEqual(banco.listar_rolos(), [])
+        self.assertEqual(self.contar_movimentacoes(), 0)  # nem a entrada do rolo foi gravada
+
+    def test_o_proprio_banco_recusa_limite_negativo_no_rolo(self):
+        banco.cadastrar_rolo("Malha", "Azul", "8", ADMIN)
+        with self.assertRaises(sqlite3.IntegrityError):
+            banco.executar("UPDATE rolos_tecido SET limite_baixo = -0.5")
+
+
 class TesteBancoDeVersaoAntiga(TesteComBancoLimpo):
     """O banco real da fábrica foi criado antes de existir o limite por pijama."""
 
@@ -93,6 +149,26 @@ class TesteBancoDeVersaoAntiga(TesteComBancoLimpo):
 
         self.assertEqual(banco.buscar_produto("PJ-LIG-M-AZ")["limite_baixo"], banco.LIMITE_PIJAMAS_BAIXO)
         self.assertEqual(banco.resumo()["itens_baixos"], 1)  # 3 <= 5, como antes
+
+    def test_rolos_antigos_ganham_o_limite_padrao(self):
+        conexao = banco.conectar()
+        conexao.executescript("""
+            DROP TABLE rolos_tecido;
+            CREATE TABLE rolos_tecido (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, codigo TEXT UNIQUE,
+                tipo_tecido TEXT NOT NULL, cor TEXT NOT NULL,
+                metragem_atual REAL NOT NULL DEFAULT 0 CHECK (metragem_atual >= 0),
+                ativo INTEGER NOT NULL DEFAULT 1
+            );
+            INSERT INTO rolos_tecido (codigo, tipo_tecido, cor, metragem_atual)
+            VALUES ('RL-000001', 'Malha', 'Azul', 2.5);
+        """)
+        conexao.close()
+
+        banco.criar_tabelas()
+
+        self.assertEqual(banco.buscar_rolo("RL-000001")["limite_baixo"], banco.LIMITE_METROS_BAIXO)
+        self.assertEqual(banco.resumo()["itens_baixos"], 1)  # 2,5 <= 3, como antes
 
 
 class TesteLimiteNasPaginas(TesteComCliente):
@@ -143,6 +219,33 @@ class TesteLimiteNasPaginas(TesteComCliente):
         linhas = self.operador.get("/exportar/pijamas.csv").get_data(as_text=True).splitlines()
         self.assertIn("Estoque baixo com até", linhas[0])
         self.assertEqual(linhas[1].split(";")[5], "20")
+
+    def test_cadastrar_rolo_pela_janela_com_limite(self):
+        self.admin.post("/rolos", data={"tipo_tecido": "Malha", "cor": "Azul",
+                                        "metragem": "50", "limite_baixo": "8.5"})
+        self.assertEqual(banco.buscar_rolo("RL-000001")["limite_baixo"], 8.5)
+
+    def test_editar_limite_do_rolo_pela_pagina(self):
+        codigo = banco.cadastrar_rolo("Malha", "Azul", "50", ADMIN)
+        html = self.admin.get(f"/itens/{codigo}/editar").get_data(as_text=True)
+        self.assertIn("Quase acabando com até", html)
+
+        self.admin.post(f"/itens/{codigo}/editar", data={"tipo_tecido": "Malha", "cor": "Azul",
+                                                         "limite_baixo": "9"})
+        self.assertEqual(banco.buscar_rolo(codigo)["limite_baixo"], 9)
+
+    def test_painel_e_relatorio_usam_o_limite_do_rolo(self):
+        banco.cadastrar_rolo("Malha", "Azul", "8", ADMIN, limite_baixo="10")
+        dados = self.operador.get("/api/painel").get_json()
+        self.assertEqual(dados["rolos"][0]["limite_baixo"], 10)
+        self.assertEqual(dados["resumo"]["itens_baixos"], 1)
+        self.assertIn("RL-000001", self.operador.get("/relatorios").get_data(as_text=True))
+
+    def test_csv_de_rolos_tem_o_limite(self):
+        banco.cadastrar_rolo("Malha", "Azul", "8", ADMIN, limite_baixo="10,5")
+        linhas = self.operador.get("/exportar/tecidos.csv").get_data(as_text=True).splitlines()
+        self.assertIn("Quase acabando com até (m)", linhas[0])
+        self.assertEqual(linhas[1].split(";")[4], "10,50")
 
 
 if __name__ == "__main__":

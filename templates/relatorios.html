@@ -26,18 +26,19 @@
   </section>
 
   <section class="bloco">
-    <h2>Rolos quase acabando <small>(até {{ limite_metros|numero_br }} m)</small></h2>
+    <h2>Rolos quase acabando <small>(limite de cada rolo)</small></h2>
     <div class="tabela-rolagem">
       <table>
-        <thead><tr><th>Código</th><th>Tecido</th><th>Cor</th><th class="num">Metros</th></tr></thead>
+        <thead><tr><th>Código</th><th>Tecido</th><th>Cor</th><th class="num">Metros</th><th class="num">Baixo com até</th></tr></thead>
         <tbody>
           {% for r in rolos_acabando %}
             <tr class="baixo">
               <td class="codigo">{{ r.codigo }}</td><td>{{ r.tipo_tecido }}</td><td>{{ r.cor }}</td>
               <td class="num">{{ r.metragem_atual|numero_br(2) }}</td>
+              <td class="num">{{ r.limite_baixo|numero_br(2) }} m</td>
             </tr>
           {% else %}
-            <tr class="vazio"><td colspan="4">Nenhum rolo quase acabando.</td></tr>
+            <tr class="vazio"><td colspan="5">Nenhum rolo quase acabando.</td></tr>
           {% endfor %}
         </tbody>
       </table>

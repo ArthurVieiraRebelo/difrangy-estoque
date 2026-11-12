@@ -304,6 +304,7 @@ def rolos():
                 cor=formulario.get("cor", ""),
                 metragem=formulario.get("metragem", ""),
                 usuario=g.usuario,
+                limite_baixo=formulario.get("limite_baixo", ""),
             )
         except banco.ErroEstoque as erro:
             flash(str(erro), "erro")
@@ -323,6 +324,7 @@ def rolos():
         novo=request.args.get("novo", ""),
         # Botões de etiqueta que o master deixou ligados (código de barras, QR code)
         tipos_etiqueta=configuracoes.tipos_de_etiqueta_liberados(),
+        limite_padrao=banco.LIMITE_METROS_BAIXO,
     )
 
 
@@ -346,7 +348,8 @@ def editar_item(codigo):
                                      formulario.get("tamanho"), formulario.get("cor"),
                                      formulario.get("limite_baixo"))
             else:
-                banco.editar_rolo(item["codigo"], formulario.get("tipo_tecido"), formulario.get("cor"))
+                banco.editar_rolo(item["codigo"], formulario.get("tipo_tecido"), formulario.get("cor"),
+                                  formulario.get("limite_baixo"))
         except banco.ErroEstoque as erro:
             flash(str(erro), "erro")
         else:
@@ -407,7 +410,6 @@ def relatorios():
         rolos_acabando=banco.relatorio_rolos_acabando(),
         consumo_tecido=banco.relatorio_consumo_tecido_por_mes(),
         vendas=banco.relatorio_pijamas_vendidos_por_mes(),
-        limite_metros=banco.LIMITE_METROS_BAIXO,
     )
 
 
@@ -670,9 +672,7 @@ def api_painel():
         produtos=banco.listar_produtos(somente_ativos=True),
         rolos=banco.listar_rolos(somente_com_saldo=True, somente_ativos=True),
         movimentacoes=banco.listar_movimentacoes(limite=15),
-        # O limite de cada pijama já vem nele (produtos[i].limite_baixo);
-        # o dos rolos é um só para todos
-        limites={"metros": banco.LIMITE_METROS_BAIXO},
+        # O limite de estoque baixo vem dentro de cada item (campo limite_baixo)
     )
 
 

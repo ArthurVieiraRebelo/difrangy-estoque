@@ -23,7 +23,7 @@ async function atualizarPainel() {
 
     desenharResumo(dados.resumo);
     desenharProdutos(dados.produtos);
-    desenharRolos(dados.rolos, dados.limites.metros);
+    desenharRolos(dados.rolos);
     desenharMovimentacoes(dados.movimentacoes);
 
     primeiraCarga = false;
@@ -90,7 +90,7 @@ function desenharProdutos(produtos) {
   }
 }
 
-function desenharRolos(rolos, limite) {
+function desenharRolos(rolos) {
   const corpo = document.getElementById("tabela-rolos");
   corpo.replaceChildren();
 
@@ -106,7 +106,8 @@ function desenharRolos(rolos, limite) {
       criarCelula(r.cor),
       criarCelula(formatarNumero(r.metragem_atual, 2), "num"),
     );
-    if (r.metragem_atual <= limite) tr.classList.add("baixo");
+    // Cada rolo também tem o seu limite (definido pelo administrador)
+    if (r.metragem_atual <= r.limite_baixo) tr.classList.add("baixo");
     destacarSeMudou(tr, r.codigo, r.metragem_atual);
     corpo.append(tr);
   }
