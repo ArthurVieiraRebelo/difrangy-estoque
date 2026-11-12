@@ -6,18 +6,19 @@
 
 <div class="grade-2">
   <section class="bloco">
-    <h2>Pijamas com estoque baixo <small>(até {{ limite_pijamas }} un.)</small></h2>
+    <h2>Pijamas com estoque baixo <small>(limite de cada pijama)</small></h2>
     <div class="tabela-rolagem">
       <table>
-        <thead><tr><th>Código</th><th>Modelo</th><th>Tam.</th><th>Cor</th><th class="num">Qtd.</th></tr></thead>
+        <thead><tr><th>Código</th><th>Modelo</th><th>Tam.</th><th>Cor</th><th class="num">Qtd.</th><th class="num">Baixo com até</th></tr></thead>
         <tbody>
           {% for p in pijamas_baixos %}
             <tr class="baixo">
               <td class="codigo">{{ p.codigo }}</td><td>{{ p.modelo }}</td><td>{{ p.tamanho }}</td>
               <td>{{ p.cor }}</td><td class="num">{{ p.quantidade }}</td>
+              <td class="num">{{ p.limite_baixo }}</td>
             </tr>
           {% else %}
-            <tr class="vazio"><td colspan="5">Nenhum pijama com estoque baixo. 👍</td></tr>
+            <tr class="vazio"><td colspan="6">Nenhum pijama com estoque baixo. 👍</td></tr>
           {% endfor %}
         </tbody>
       </table>

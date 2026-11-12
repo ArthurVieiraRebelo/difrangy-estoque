@@ -45,9 +45,10 @@ def _gerar_csv(cabecalho, linhas):
 
 def csv_pijamas(produtos):
     return _gerar_csv(
-        ["Código", "Modelo", "Tamanho", "Cor", "Quantidade", "Situação"],
+        ["Código", "Modelo", "Tamanho", "Cor", "Quantidade", "Estoque baixo com até", "Situação"],
         [[_texto_seguro(p["codigo"]), _texto_seguro(p["modelo"]), _texto_seguro(p["tamanho"]),
-          _texto_seguro(p["cor"]), p["quantidade"], "Ativo" if p["ativo"] else "Desativado"]
+          _texto_seguro(p["cor"]), p["quantidade"], p["limite_baixo"],
+          "Ativo" if p["ativo"] else "Desativado"]
          for p in produtos],
     )
 

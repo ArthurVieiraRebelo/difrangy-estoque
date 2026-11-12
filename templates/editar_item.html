@@ -9,6 +9,10 @@
     O <strong>código</strong> não muda, porque ele já está impresso nas etiquetas.
     O <strong>saldo</strong> ({{ item.saldo|numero_br(2 if item.tipo_item == 'rolo' else 0) }} {{ item.unidade }})
     só muda por movimentação: para corrigir, use <em>Ajuste de inventário</em> na tela Bipar.
+    {% if item.tipo_item == 'produto' %}
+      <br>Em <strong>Estoque baixo com até</strong>, informe com quantas unidades (ou menos) este pijama
+      deve aparecer como estoque baixo no painel e nos relatórios. Use um número maior para os que vendem mais.
+    {% endif %}
   </p>
 
   <form method="post" class="formulario" autocomplete="off">
@@ -16,6 +20,9 @@
       <label>Modelo <input name="modelo" required value="{{ item.modelo }}"></label>
       <label>Tamanho <input name="tamanho" required value="{{ item.tamanho }}"></label>
       <label>Cor <input name="cor" required value="{{ item.cor }}"></label>
+      <label>Estoque baixo com até <small>(un.)</small>
+        <input name="limite_baixo" type="number" min="0" step="1" required value="{{ item.limite_baixo }}">
+      </label>
     {% else %}
       <label>Tipo de tecido <input name="tipo_tecido" required value="{{ item.tipo_tecido }}"></label>
       <label>Cor <input name="cor" required value="{{ item.cor }}"></label>

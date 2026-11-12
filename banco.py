@@ -26,8 +26,11 @@ from pathlib import Path
 # usam isso para trabalhar num banco temporário, sem mexer no estoque real.
 CAMINHO_BANCO = Path(os.environ.get("ESTOQUE_DB", Path(__file__).parent / "estoque.db"))
 
-# Itens com saldo menor ou igual a estes valores aparecem como "estoque baixo"
+# "Estoque baixo" = saldo menor ou igual ao limite.
+# Pijamas: cada um tem o SEU limite (coluna produtos.limite_baixo), porque uns
+# vendem mais que outros. O valor abaixo é só o que vem preenchido num pijama novo.
 LIMITE_PIJAMAS_BAIXO = 5
+# Rolos: um limite só, para todos
 LIMITE_METROS_BAIXO = 3.0
 
 # Proteções contra erro de digitação (ex: bipar o código no campo de quantidade)
@@ -137,7 +140,9 @@ def criar_tabelas():
                 tamanho     TEXT    NOT NULL,
                 cor         TEXT    NOT NULL,
                 quantidade  INTEGER NOT NULL DEFAULT 0 CHECK (quantidade >= 0),
-                ativo       INTEGER NOT NULL DEFAULT 1   -- 1 = ativo, 0 = desativado
+                ativo       INTEGER NOT NULL DEFAULT 1,  -- 1 = ativo, 0 = desativado
+                -- estoque baixo quando quantidade <= limite_baixo (cada pijama tem o seu)
+                limite_baixo INTEGER NOT NULL CHECK (limite_baixo >= 0)
             );
 
             CREATE TABLE IF NOT EXISTS rolos_tecido (
@@ -189,6 +194,12 @@ def criar_tabelas():
         _adicionar_coluna_se_faltar(conexao, "rolos_tecido", "ativo", "INTEGER NOT NULL DEFAULT 1")
         _adicionar_coluna_se_faltar(conexao, "movimentacoes", "usuario", "TEXT")
         _adicionar_coluna_se_faltar(conexao, "usuarios", "master", "INTEGER NOT NULL DEFAULT 0")
+        # Os pijamas que já existiam ficam com o limite padrão (5), que era o
+        # limite único das versões antigas. Assim nada muda até o admin alterar.
+        _adicionar_coluna_se_faltar(
+            conexao, "produtos", "limite_baixo",
+            f"INTEGER NOT NULL DEFAULT {LIMITE_PIJAMAS_BAIXO} CHECK (limite_baixo >= 0)",
+        )
 
         # Se ainda não existe master (banco de uma versão antiga), o administrador
         # mais antigo (o do primeiro acesso, menor id) vira o master.
@@ -289,6 +300,25 @@ def converter_quantidade(valor, tipo_item, permitir_zero=False):
         raise ErroEstoque("A quantidade precisa ser maior que zero.")
     if numero > QUANTIDADE_MAXIMA:
         raise ErroEstoque(f"Quantidade muito alta ({valor}). Confira o que foi digitado.")
+    return numero
+
+
+def converter_limite_baixo(valor):
+    """Valida o "estoque baixo com até X unidades" digitado no cadastro/edição.
+
+    Vazio -> o padrão (LIMITE_PIJAMAS_BAIXO). Zero vale: avisa só quando acabar.
+    """
+    texto = str(valor if valor is not None else "").strip()
+    if not texto:
+        return LIMITE_PIJAMAS_BAIXO
+    try:
+        numero = int(texto)  # int("2.5") dá erro: o limite é em unidades inteiras
+    except ValueError:
+        raise ErroEstoque(f"Estoque baixo inválido: '{valor}'. Use um número inteiro, ex: 5.")
+    if numero < 0:
+        raise ErroEstoque("O estoque baixo não pode ser negativo.")
+    if numero > QUANTIDADE_MAXIMA:
+        raise ErroEstoque(f"Estoque baixo muito alto ({valor}). Confira o que foi digitado.")
     return numero
 
 
@@ -538,10 +568,9 @@ def resumo():
     pijamas = consultar_um(
         """SELECT COUNT(*) AS skus,
                   COALESCE(SUM(quantidade), 0) AS unidades,
-                  COALESCE(SUM(quantidade <= ?), 0) AS baixos
+                  COALESCE(SUM(quantidade <= limite_baixo), 0) AS baixos
            FROM produtos
-           WHERE ativo = 1""",
-        (LIMITE_PIJAMAS_BAIXO,),
+           WHERE ativo = 1"""
     )
     tecido = consultar_um(
         """SELECT COUNT(*) AS rolos,
@@ -551,7 +580,7 @@ def resumo():
            WHERE metragem_atual > 0 AND ativo = 1""",
         (LIMITE_METROS_BAIXO,),
     )
-    # Observação: no SQLite, uma comparação (quantidade <= 5) vale 1 ou 0,
+    # Observação: no SQLite, uma comparação (quantidade <= limite_baixo) vale 1 ou 0,
     # então SUM(comparação) conta quantas linhas atendem à condição.
     return {
         "pijamas_unidades": pijamas["unidades"],
@@ -580,17 +609,19 @@ def _gravar_movimentacao(conexao, tipo_item, codigo, tipo, quantidade, motivo, u
     )
 
 
-def cadastrar_produto(modelo, tamanho, cor, quantidade_inicial, usuario, codigo=""):
+def cadastrar_produto(modelo, tamanho, cor, quantidade_inicial, usuario, codigo="", limite_baixo=""):
     """Cadastra um pijama novo (combinação modelo + tamanho + cor).
 
     Se o código não for digitado, ele é gerado: PJ-<modelo>-<tamanho>-<cor>.
     Se houver quantidade inicial, grava também a movimentação de entrada.
+    limite_baixo: com quantas unidades (ou menos) ele aparece como estoque baixo.
     Devolve o código do pijama cadastrado.
     """
     modelo = limpar_texto(modelo, "modelo")
     tamanho = limpar_texto(tamanho, "tamanho").upper()
     cor = limpar_texto(cor, "cor")
     quantidade = converter_quantidade(quantidade_inicial or 0, "produto", permitir_zero=True)
+    limite_baixo = converter_limite_baixo(limite_baixo)
 
     if str(codigo).strip():
         codigo = limpar_codigo(codigo)
@@ -609,9 +640,9 @@ def cadastrar_produto(modelo, tamanho, cor, quantidade_inicial, usuario, codigo=
     conexao = conectar()
     try:
         conexao.execute(
-            """INSERT INTO produtos (codigo, modelo, tamanho, cor, quantidade)
-               VALUES (?, ?, ?, ?, ?)""",
-            (codigo, modelo, tamanho, cor, quantidade),
+            """INSERT INTO produtos (codigo, modelo, tamanho, cor, quantidade, limite_baixo)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (codigo, modelo, tamanho, cor, quantidade, limite_baixo),
         )
         if quantidade > 0:
             _gravar_movimentacao(conexao, "produto", codigo, "entrada", quantidade,
@@ -655,16 +686,21 @@ def cadastrar_rolo(tipo_tecido, cor, metragem, usuario):
     return codigo
 
 
-def editar_produto(codigo, modelo, tamanho, cor):
-    """Corrige modelo, tamanho ou cor de um pijama.
+def editar_produto(codigo, modelo, tamanho, cor, limite_baixo=None):
+    """Corrige modelo, tamanho, cor e o limite de estoque baixo de um pijama.
 
     O CÓDIGO não muda: ele já está impresso nas etiquetas coladas nas peças.
     A QUANTIDADE também não: saldo só muda por movimentação.
+    limite_baixo=None mantém o limite que já estava.
     """
+    novo_limite = None if limite_baixo is None else converter_limite_baixo(limite_baixo)
+    # COALESCE(?, limite_baixo): se o novo limite for None (NULL), fica o atual
     alteradas = executar(
-        "UPDATE produtos SET modelo = ?, tamanho = ?, cor = ? WHERE codigo = ?",
+        """UPDATE produtos SET modelo = ?, tamanho = ?, cor = ?,
+                               limite_baixo = COALESCE(?, limite_baixo)
+           WHERE codigo = ?""",
         (limpar_texto(modelo, "modelo"), limpar_texto(tamanho, "tamanho").upper(),
-         limpar_texto(cor, "cor"), codigo),
+         limpar_texto(cor, "cor"), novo_limite, codigo),
     )
     if alteradas == 0:
         raise ErroEstoque(f"Pijama {codigo} não encontrado.")
@@ -791,11 +827,11 @@ def registrar_movimentacao(codigo, tipo, quantidade, motivo, usuario):
 # =====================================================================
 
 def relatorio_pijamas_baixos():
+    """Pijamas ativos com quantidade menor ou igual ao limite de CADA um."""
     return consultar(
         """SELECT * FROM produtos
-           WHERE ativo = 1 AND quantidade <= ?
-           ORDER BY quantidade, modelo""",
-        (LIMITE_PIJAMAS_BAIXO,),
+           WHERE ativo = 1 AND quantidade <= limite_baixo
+           ORDER BY quantidade, modelo"""
     )
 
 

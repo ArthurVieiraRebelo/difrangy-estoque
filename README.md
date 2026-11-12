@@ -15,6 +15,7 @@ Sistema web de controle de estoque com leitura de código de barras, feito para 
 - **Etiquetas prontas para impressão** em código de barras (Code128) ou QR code, geradas em lote pelo próprio sistema. Funcionam em folha A4 ou impressora térmica.
 - **Histórico de movimentações** com data, motivo, usuário responsável e filtro por código.
 - **Relatórios:** itens com estoque baixo, consumo de tecido por mês e pijamas vendidos por mês.
+- **Estoque baixo por pijama:** cada pijama tem o seu limite de alerta, porque os que vendem mais precisam de aviso mais cedo.
 - **Login por funcionário**, com perfis de administrador e operador.
 - **Edição, desativação e exclusão de itens** sem perder o histórico.
 - **Exportação em CSV** do estoque, do histórico e dos relatórios, formatada para o Excel em português.
@@ -50,6 +51,7 @@ Cada funcionário entra com o próprio login, e toda movimentação fica registr
 | Consultar painel, histórico e relatórios, exportar CSV, imprimir etiquetas | ✓ | ✓ | ✓ |
 | Ajuste de inventário | | ✓ | ✓ |
 | Cadastrar, editar, desativar e excluir pijamas e rolos | | ✓ | ✓ |
+| Definir o limite de estoque baixo de cada pijama | | ✓ | ✓ |
 | Gerenciar usuários e backups | | ✓ | ✓ |
 | Configurações do sistema (tipos de etiqueta liberados) | | | ✓ |
 
@@ -152,7 +154,12 @@ Os dois formatos guardam o mesmo texto, o código do item, e funcionam igualment
 
 ![Relatórios](docs/img/relatorios.png)
 
-Os limites de estoque baixo (5 unidades e 3 metros) ficam no início de `banco.py`, nas constantes `LIMITE_PIJAMAS_BAIXO` e `LIMITE_METROS_BAIXO`.
+Um item aparece como estoque baixo quando o saldo fica igual ou menor que o limite dele.
+
+- **Pijamas:** cada um tem o seu limite, definido pelo administrador no cadastro ou na tela de edição (campo *Estoque baixo com até*). Um pijama que vende muito pode avisar com 30 unidades, e um que vende pouco, com 2. Com limite 0, o aviso aparece só quando o pijama acaba. Pijama novo vem com 5, valor da constante `LIMITE_PIJAMAS_BAIXO` em `banco.py`.
+- **Rolos de tecido:** um limite único de 3 metros para todos, na constante `LIMITE_METROS_BAIXO`.
+
+O painel, a lista de pijamas e o relatório usam o limite de cada pijama, e a exportação CSV inclui essa coluna.
 
 ## Limitações conhecidas
 

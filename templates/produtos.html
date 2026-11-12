@@ -24,13 +24,17 @@
           <th class="coluna-selecao">
             <input type="checkbox" id="selecionar-todos" aria-label="Marcar todos">
           </th>
-          <th>Código</th><th>Modelo</th><th>Tam.</th><th>Cor</th><th class="num">Qtd.</th><th></th>
+          <th>Código</th><th>Modelo</th><th>Tam.</th><th>Cor</th><th class="num">Qtd.</th>
+          <th class="num" title="O pijama aparece como estoque baixo com esta quantidade ou menos">Baixo com até</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
         {% for p in produtos %}
-          {# Item desativado aparece apagado; o recém-cadastrado vem marcado #}
-          <tr class="{{ 'acabou' if not p.ativo }} {{ 'linha-nova' if p.codigo == novo }}">
+          {# Item desativado aparece apagado; o recém-cadastrado vem marcado;
+             o ativo com estoque baixo fica amarelo, como no painel #}
+          <tr class="{{ 'acabou' if not p.ativo }} {{ 'linha-nova' if p.codigo == novo }}
+                     {{ 'baixo' if p.ativo and p.quantidade <= p.limite_baixo }}">
             <td class="coluna-selecao">
               <input type="checkbox" class="selecao-item" name="codigo" value="{{ p.codigo }}"
                      form="form-etiquetas" aria-label="Marcar {{ p.codigo }}"
@@ -45,13 +49,14 @@
             <td>{{ p.tamanho }}</td>
             <td>{{ p.cor }}</td>
             <td class="num">{{ p.quantidade|numero_br }}</td>
+            <td class="num">{{ p.limite_baixo|numero_br }}</td>
             <td class="acoes">
               <a href="{{ url_for('movimentacoes', codigo=p.codigo) }}">Histórico</a>
               {% if eh_admin %}<a href="{{ url_for('editar_item', codigo=p.codigo) }}">Editar</a>{% endif %}
             </td>
           </tr>
         {% else %}
-          <tr class="vazio"><td colspan="7">Nenhum pijama cadastrado ainda.</td></tr>
+          <tr class="vazio"><td colspan="8">Nenhum pijama cadastrado ainda.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -83,7 +88,15 @@
         <label>Quantidade inicial
           <input name="quantidade" type="number" min="0" step="1" value="{{ formulario.get('quantidade', '0') }}">
         </label>
+        <label>Estoque baixo com até <small>(un.)</small>
+          <input name="limite_baixo" type="number" min="0" step="1"
+                 value="{{ formulario.get('limite_baixo', limite_padrao) }}">
+        </label>
       </div>
+      <p class="dica" style="margin-top: .6rem;">
+        Com essa quantidade ou menos, o pijama aparece como <strong>estoque baixo</strong> no painel e nos relatórios.
+        Para os que vendem mais, use um número maior.
+      </p>
       <label style="margin-top: .9rem;">Código <small>(opcional — se ficar vazio, é gerado: PJ-FLO-M-AZ)</small>
         <input name="codigo" value="{{ formulario.get('codigo', '') }}">
       </label>

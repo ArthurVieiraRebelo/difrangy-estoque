@@ -22,7 +22,7 @@ async function atualizarPainel() {
     const dados = await resposta.json();
 
     desenharResumo(dados.resumo);
-    desenharProdutos(dados.produtos, dados.limites.pijamas);
+    desenharProdutos(dados.produtos);
     desenharRolos(dados.rolos, dados.limites.metros);
     desenharMovimentacoes(dados.movimentacoes);
 
@@ -66,7 +66,7 @@ function destacarSeMudou(tr, codigo, saldo) {
   saldosAnteriores[codigo] = saldo;
 }
 
-function desenharProdutos(produtos, limite) {
+function desenharProdutos(produtos) {
   const corpo = document.getElementById("tabela-produtos");
   corpo.replaceChildren(); // apaga as linhas antigas
 
@@ -83,7 +83,8 @@ function desenharProdutos(produtos, limite) {
       criarCelula(p.cor),
       criarCelula(formatarNumero(p.quantidade), "num"),
     );
-    if (p.quantidade <= limite) tr.classList.add("baixo");
+    // Cada pijama tem o seu limite de estoque baixo (definido pelo administrador)
+    if (p.quantidade <= p.limite_baixo) tr.classList.add("baixo");
     destacarSeMudou(tr, p.codigo, p.quantidade);
     corpo.append(tr);
   }
