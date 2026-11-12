@@ -714,6 +714,15 @@ def porta_esta_livre(porta):
     """Testa se dá para usar a porta. Se o sistema já estiver aberto em outro
     terminal, a porta está ocupada e o bind() dá erro."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as teste:
+        # Logo depois de fechar o sistema, a porta ainda tem conexões antigas
+        # "se despedindo" (estado TIME_WAIT, dura até ~1 minuto). No Linux, sem
+        # SO_REUSEADDR, o bind() recusaria a porta por causa delas, mesmo sem
+        # nenhum sistema aberto. Com ele, o bind() só falha se outro programa
+        # estiver mesmo ESCUTANDO na porta. O Waitress usa a mesma opção.
+        # No Windows essa opção deixaria "roubar" uma porta em uso, e lá o
+        # TIME_WAIT não atrapalha, então ela só é ligada fora do Windows.
+        if os.name != "nt":
+            teste.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             teste.bind(("0.0.0.0", porta))
             return True
