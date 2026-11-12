@@ -28,6 +28,37 @@ O saldo de um item nunca é alterado diretamente. Toda entrada ou saída grava u
 
 O estoque nunca fica negativo. A conferência do saldo é feita dentro do próprio `UPDATE` (`WHERE quantidade + ? >= 0`), e não numa consulta separada antes. Assim, dois computadores não conseguem dar baixa na última unidade ao mesmo tempo. As tabelas também têm restrições `CHECK` como segunda camada de proteção.
 
+## Integridade do banco de dados
+
+As regras mais importantes não dependem só do código Python: o próprio banco recusa dados errados, mesmo que o programa tenha um erro ou que alguém altere o arquivo por fora do sistema.
+
+| Regra | Como o banco garante |
+|---|---|
+| Toda movimentação aponta para um item que existe e está ativo | gatilho (`trigger`) antes de cada `INSERT` |
+| Toda movimentação aponta para um usuário que existe | chave estrangeira (`REFERENCES usuarios (login)`) |
+| O histórico não pode ser alterado nem apagado | gatilhos que recusam `UPDATE` e `DELETE` em `movimentacoes` |
+| Itens e usuários nunca são apagados de verdade | gatilhos que recusam `DELETE` (exclusão lógica, ver abaixo) |
+| O código de um item nunca muda | gatilho em `produtos.codigo`; em rolos, o código é uma coluna calculada a partir do número (`RL-` + id) |
+| O mesmo pijama (modelo + tamanho + cor) não existe duas vezes | índice `UNIQUE`, sem diferenciar maiúsculas e minúsculas |
+| Só existe um master, e ele é um administrador ativo | índice `UNIQUE` parcial e `CHECK` |
+| Valores válidos (motivo, data, 0/1, pijama em unidades inteiras, código só com A–Z, 0–9 e hífen) | restrições `CHECK` |
+
+A movimentação aponta para um pijama **ou** para um rolo, conforme `tipo_item`. Uma chave estrangeira só aponta para uma tabela, por isso essa ligação é garantida por gatilho.
+
+A tela de **Administração** mostra uma conferência do banco. Ela verifica se o arquivo está íntegro, se toda ligação entre as tabelas está certa e se o saldo de cada item é igual à soma do histórico dele.
+
+### Atualizações da estrutura
+
+O banco guarda o número da sua versão (`PRAGMA user_version`). Cada mudança de estrutura é uma migração numerada em `migracoes.py`. Ao iniciar, o sistema aplica em ordem só as migrações que faltam:
+
+1. faz um backup do banco atual;
+2. roda cada migração numa transação: se algo der errado, nada é alterado;
+3. confere se nenhuma ligação entre as tabelas ficou quebrada antes de salvar.
+
+Se a atualização não puder ser feita, por exemplo por haver o mesmo pijama cadastrado duas vezes num banco antigo, o sistema não abre e explica o que corrigir. Um banco de uma versão mais nova que o sistema também é recusado.
+
+Para mudar a estrutura no futuro, escreva uma nova função `_migracao_N` e acrescente-a em `MIGRACOES`. Uma migração que já foi usada nunca deve ser alterada.
+
 ## Leitura do código de barras
 
 Leitores de código de barras USB funcionam como um teclado: digitam o código e enviam `Enter`. A tela de leitura aproveita isso com um campo de texto sempre focado dentro de um formulário. O JavaScript intercepta o envio, manda o código para a API com `fetch()` e mostra o resultado na própria página. Um sinal sonoro indica sucesso ou erro, para quem está bipando sem olhar para a tela.
@@ -59,7 +90,7 @@ Na primeira execução, o sistema pede a criação da conta do **master**: o adm
 
 As senhas são armazenadas apenas como hash (scrypt, via Werkzeug). O sistema impede que o último administrador ativo seja desativado ou rebaixado.
 
-Excluir um item exige dois passos: primeiro desativá-lo, depois excluí-lo na tela de edição. Um item desativado deixa de aparecer no painel e recusa movimentações. As movimentações de um item excluído continuam no histórico e nos relatórios, identificadas como "(item excluído)", para que os totais de meses anteriores não mudem. O código de um pijama excluído não pode ser reutilizado.
+Excluir um item exige dois passos: primeiro desativá-lo, depois excluí-lo na tela de edição. Um item desativado deixa de aparecer no painel e recusa movimentações. A exclusão é lógica: o item some de todas as telas e não pode voltar, mas continua no banco marcado como excluído. Assim, as movimentações dele continuam no histórico e nos relatórios com o nome certo, marcadas como "(excluído)", e os totais de meses anteriores não mudam. O código de um item excluído nunca é reutilizado. Depois de excluir um pijama, a mesma combinação de modelo, tamanho e cor pode ser cadastrada de novo, com outro código.
 
 ![Administração](docs/img/admin.png)
 
@@ -81,6 +112,7 @@ A escolha por SQLite e SQL sem ORM foi intencional: o volume de dados de uma fá
 .
 ├── app.py              # rotas, login e permissões
 ├── banco.py            # acesso ao banco e regras de estoque
+├── migracoes.py        # estrutura das tabelas e atualização de bancos antigos
 ├── usuarios.py         # cadastro de usuários e verificação de senha
 ├── backup.py           # cópias de segurança automáticas
 ├── exportacao.py       # geração dos arquivos CSV
@@ -134,7 +166,7 @@ Para usar outra porta, defina a variável de ambiente `ESTOQUE_PORTA` (ex.: `EST
 python -m unittest -v
 ```
 
-Os testes cobrem as regras de estoque (saldo negativo, arredondamento de metragem, códigos duplicados ou reservados, limite de estoque baixo de cada item), a correção do código digitado e as sugestões, login e permissões por perfil, a atualização de bancos de versões anteriores, a exportação CSV, o backup, as rotas da API e a renderização das páginas. Cada teste usa um banco temporário próprio, então o estoque real nunca é tocado.
+Os testes cobrem as regras de estoque (saldo negativo, arredondamento de metragem, códigos duplicados ou reservados, limite de estoque baixo de cada item), a correção do código digitado e as sugestões, login e permissões por perfil, as regras garantidas pelo próprio banco (cada uma é testada com SQL direto, sem passar pelo Python), a atualização de bancos de versões anteriores (inclusive uma que falha no meio), a exportação CSV, o backup, as rotas da API e a renderização das páginas. Cada teste usa um banco temporário próprio, então o estoque real nunca é tocado.
 
 ## Códigos e etiquetas
 

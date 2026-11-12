@@ -90,6 +90,9 @@ def conectar():
     """
     conexao = sqlite3.connect(CAMINHO_BANCO, timeout=10)
     conexao.row_factory = sqlite3.Row
+    # O SQLite só confere as chaves estrangeiras (ex: o usuário de cada
+    # movimentação precisa existir) se isto for ligado em CADA conexão.
+    conexao.execute("PRAGMA foreign_keys = ON")
     return conexao
 
 
@@ -122,112 +125,11 @@ def executar(sql, parametros=()):
 
 
 def criar_tabelas():
-    """Cria as tabelas se ainda não existirem. É chamada quando o sistema inicia."""
-    conexao = conectar()
-    try:
-        # Modo WAL: permite que os computadores LEIAM o banco enquanto outro
-        # está GRAVANDO. Importante porque o painel consulta a cada 3 segundos.
-        conexao.execute("PRAGMA journal_mode = WAL")
-
-        # Os CHECK abaixo são uma segunda proteção: mesmo que o código Python
-        # tenha algum erro, o próprio banco recusa saldo negativo.
-        conexao.executescript("""
-            CREATE TABLE IF NOT EXISTS produtos (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                codigo      TEXT    NOT NULL UNIQUE,
-                modelo      TEXT    NOT NULL,
-                tamanho     TEXT    NOT NULL,
-                cor         TEXT    NOT NULL,
-                quantidade  INTEGER NOT NULL DEFAULT 0 CHECK (quantidade >= 0),
-                ativo       INTEGER NOT NULL DEFAULT 1,  -- 1 = ativo, 0 = desativado
-                -- estoque baixo quando quantidade <= limite_baixo (cada pijama tem o seu)
-                limite_baixo INTEGER NOT NULL CHECK (limite_baixo >= 0)
-            );
-
-            CREATE TABLE IF NOT EXISTS rolos_tecido (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                codigo          TEXT    UNIQUE,  -- preenchido logo após o INSERT (RL-000001)
-                tipo_tecido     TEXT    NOT NULL,
-                cor             TEXT    NOT NULL,
-                metragem_atual  REAL    NOT NULL DEFAULT 0 CHECK (metragem_atual >= 0),
-                ativo           INTEGER NOT NULL DEFAULT 1,
-                -- "quase acabando" quando metragem_atual <= limite_baixo (cada rolo tem o seu)
-                limite_baixo    REAL    NOT NULL CHECK (limite_baixo >= 0)
-            );
-
-            CREATE TABLE IF NOT EXISTS movimentacoes (
-                id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                tipo_item    TEXT NOT NULL CHECK (tipo_item IN ('produto', 'rolo')),
-                codigo_item  TEXT NOT NULL,
-                tipo         TEXT NOT NULL CHECK (tipo IN ('entrada', 'saida')),
-                quantidade   REAL NOT NULL CHECK (quantidade > 0),
-                data         TEXT NOT NULL,  -- formato 'AAAA-MM-DD HH:MM:SS'
-                motivo       TEXT NOT NULL,
-                usuario      TEXT            -- login de quem fez a movimentação
-            );
-
-            CREATE TABLE IF NOT EXISTS usuarios (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                nome        TEXT    NOT NULL,
-                login       TEXT    NOT NULL UNIQUE,
-                senha_hash  TEXT    NOT NULL,   -- nunca a senha em si (ver usuarios.py)
-                perfil      TEXT    NOT NULL CHECK (perfil IN ('admin', 'operador')),
-                ativo       INTEGER NOT NULL DEFAULT 1,
-                master      INTEGER NOT NULL DEFAULT 0  -- 1 = dono do sistema (ver usuarios.py)
-            );
-
-            -- Configurações do sistema (ex: quais tipos de etiqueta estão liberados).
-            -- Cada linha é um par chave/valor, ex: ('etiqueta_qr', '1').
-            CREATE TABLE IF NOT EXISTS configuracoes (
-                chave  TEXT PRIMARY KEY,
-                valor  TEXT NOT NULL
-            );
-
-            -- Índices deixam as buscas por código e por data mais rápidas
-            CREATE INDEX IF NOT EXISTS idx_mov_codigo ON movimentacoes (codigo_item);
-            CREATE INDEX IF NOT EXISTS idx_mov_data   ON movimentacoes (data);
-        """)
-
-        # Bancos criados por versões antigas do sistema não têm estas colunas.
-        # O CREATE TABLE acima não altera tabelas que já existem, então
-        # acrescentamos as colunas que faltarem.
-        _adicionar_coluna_se_faltar(conexao, "produtos", "ativo", "INTEGER NOT NULL DEFAULT 1")
-        _adicionar_coluna_se_faltar(conexao, "rolos_tecido", "ativo", "INTEGER NOT NULL DEFAULT 1")
-        _adicionar_coluna_se_faltar(conexao, "movimentacoes", "usuario", "TEXT")
-        _adicionar_coluna_se_faltar(conexao, "usuarios", "master", "INTEGER NOT NULL DEFAULT 0")
-        # Os pijamas e rolos que já existiam ficam com o limite padrão (5 un. e 3 m),
-        # que era o limite único das versões antigas. Nada muda até o admin alterar.
-        _adicionar_coluna_se_faltar(
-            conexao, "produtos", "limite_baixo",
-            f"INTEGER NOT NULL DEFAULT {LIMITE_PIJAMAS_BAIXO} CHECK (limite_baixo >= 0)",
-        )
-        _adicionar_coluna_se_faltar(
-            conexao, "rolos_tecido", "limite_baixo",
-            f"REAL NOT NULL DEFAULT {LIMITE_METROS_BAIXO} CHECK (limite_baixo >= 0)",
-        )
-
-        # Se ainda não existe master (banco de uma versão antiga), o administrador
-        # mais antigo (o do primeiro acesso, menor id) vira o master.
-        conexao.execute("""
-            UPDATE usuarios SET master = 1
-            WHERE id = (SELECT MIN(id) FROM usuarios WHERE perfil = 'admin')
-              AND NOT EXISTS (SELECT 1 FROM usuarios WHERE master = 1)
-        """)
-        conexao.commit()
-    finally:
-        conexao.close()
-
-
-def _adicionar_coluna_se_faltar(conexao, tabela, coluna, definicao):
-    """Acrescenta uma coluna numa tabela antiga, se ela ainda não existir.
-
-    O SQLite não aceita "?" no lugar de nomes de tabela/coluna, por isso o SQL
-    é montado com f-string. Isso só é seguro porque os nomes vêm escritos no
-    próprio código (criar_tabelas), NUNCA de algo digitado pelo usuário.
-    """
-    colunas = [linha["name"] for linha in conexao.execute(f"PRAGMA table_info({tabela})")]
-    if coluna not in colunas:
-        conexao.execute(f"ALTER TABLE {tabela} ADD COLUMN {coluna} {definicao}")
+    """Cria o banco (se for novo) ou atualiza um banco antigo até a versão atual.
+    É chamada quando o sistema inicia. A estrutura das tabelas, as regras que o
+    próprio banco garante e o histórico de mudanças estão em migracoes.py."""
+    import migracoes  # importado aqui porque o migracoes.py também importa este arquivo
+    migracoes.atualizar_banco()
 
 
 # =====================================================================
@@ -360,11 +262,12 @@ def motivos_permitidos_para(perfil):
 # =====================================================================
 
 def buscar_produto(codigo):
-    return consultar_um("SELECT * FROM produtos WHERE codigo = ?", (codigo,))
+    # excluido = 0: um item excluído some do sistema (só o histórico lembra dele)
+    return consultar_um("SELECT * FROM produtos WHERE codigo = ? AND excluido = 0", (codigo,))
 
 
 def buscar_rolo(codigo):
-    return consultar_um("SELECT * FROM rolos_tecido WHERE codigo = ?", (codigo,))
+    return consultar_um("SELECT * FROM rolos_tecido WHERE codigo = ? AND excluido = 0", (codigo,))
 
 
 def buscar_item(codigo):
@@ -450,9 +353,9 @@ def resolver_codigo_digitado(texto):
     # REPLACE(codigo, '-', '') tira os hífens do código guardado no banco
     # (os códigos só têm letras, números e hífen — ver limpar_codigo)
     encontrados = consultar(
-        """SELECT codigo FROM produtos     WHERE REPLACE(codigo, '-', '') = ?
+        """SELECT codigo FROM produtos     WHERE excluido = 0 AND REPLACE(codigo, '-', '') = ?
            UNION
-           SELECT codigo FROM rolos_tecido WHERE REPLACE(codigo, '-', '') = ?""",
+           SELECT codigo FROM rolos_tecido WHERE excluido = 0 AND REPLACE(codigo, '-', '') = ?""",
         (compacto, compacto),
     )
     if len(encontrados) > 1:
@@ -520,7 +423,7 @@ def listar_produtos(somente_ativos=False):
     """
     return consultar(
         """SELECT * FROM produtos
-           WHERE (? = 0 OR ativo = 1)
+           WHERE excluido = 0 AND (? = 0 OR ativo = 1)
            ORDER BY ativo DESC, modelo, tamanho, cor""",
         (1 if somente_ativos else 0,),
     )
@@ -530,7 +433,8 @@ def listar_rolos(somente_com_saldo=False, somente_ativos=False):
     """Lista os rolos. Pode esconder os que acabaram e/ou os desativados."""
     return consultar(
         """SELECT * FROM rolos_tecido
-           WHERE (? = 0 OR metragem_atual > 0)
+           WHERE excluido = 0
+             AND (? = 0 OR metragem_atual > 0)
              AND (? = 0 OR ativo = 1)
            ORDER BY ativo DESC, tipo_tecido, cor, codigo""",
         (1 if somente_com_saldo else 0, 1 if somente_ativos else 0),
@@ -545,10 +449,10 @@ def listar_valores_distintos(campo):
     assim nenhum SQL é montado juntando textos.
     """
     consultas = {
-        "modelo": "SELECT DISTINCT modelo AS valor FROM produtos ORDER BY modelo",
-        "cor_produto": "SELECT DISTINCT cor AS valor FROM produtos ORDER BY cor",
-        "tipo_tecido": "SELECT DISTINCT tipo_tecido AS valor FROM rolos_tecido ORDER BY tipo_tecido",
-        "cor_rolo": "SELECT DISTINCT cor AS valor FROM rolos_tecido ORDER BY cor",
+        "modelo": "SELECT DISTINCT modelo AS valor FROM produtos WHERE excluido = 0 ORDER BY modelo",
+        "cor_produto": "SELECT DISTINCT cor AS valor FROM produtos WHERE excluido = 0 ORDER BY cor",
+        "tipo_tecido": "SELECT DISTINCT tipo_tecido AS valor FROM rolos_tecido WHERE excluido = 0 ORDER BY tipo_tecido",
+        "cor_rolo": "SELECT DISTINCT cor AS valor FROM rolos_tecido WHERE excluido = 0 ORDER BY cor",
     }
     return [linha["valor"] for linha in consultar(consultas[campo])]
 
@@ -558,8 +462,8 @@ def listar_movimentacoes(limite=50, codigo=""):
 
     Se "codigo" for informado, mostra só as daquele item.
     O LEFT JOIN busca a descrição do item na tabela certa (produtos ou rolos).
-    COALESCE pega o primeiro valor que não for vazio: se o item foi excluído,
-    os dois JOINs não acham nada e a descrição vira "(item excluído)".
+    COALESCE pega o primeiro valor que não for vazio. Item excluído continua no
+    banco (exclusão lógica), então aparece com o nome e a marca "(excluído)".
     """
     return consultar(
         """SELECT m.*,
@@ -567,7 +471,8 @@ def listar_movimentacoes(limite=50, codigo=""):
                       'Pijama ' || p.modelo || ' · ' || p.tamanho || ' · ' || p.cor,
                       'Rolo ' || r.tipo_tecido || ' · ' || r.cor,
                       '(item excluído)'
-                  ) AS descricao
+                  ) || CASE WHEN COALESCE(p.excluido, r.excluido) = 1 THEN ' (excluído)' ELSE '' END
+                  AS descricao
            FROM movimentacoes m
            LEFT JOIN produtos p
                   ON m.tipo_item = 'produto' AND p.codigo = m.codigo_item
@@ -648,10 +553,14 @@ def cadastrar_produto(modelo, tamanho, cor, quantidade_inicial, usuario, codigo=
     if codigo.startswith(PREFIXO_ROLO):
         raise ErroEstoque(f"Códigos começando com {PREFIXO_ROLO} são reservados para rolos de tecido.")
 
-    # Código de um pijama EXCLUÍDO não pode voltar a ser usado: o histórico
-    # antigo dele passaria a aparecer como se fosse do pijama novo.
-    if buscar_produto(codigo) is None and _codigo_tem_historico(codigo):
+    # O código fica reservado para sempre, mesmo depois de o pijama ser excluído:
+    # senão, o histórico antigo apareceria como se fosse do pijama novo.
+    mesmo_codigo = consultar_um("SELECT excluido FROM produtos WHERE codigo = ?", (codigo,))
+    if mesmo_codigo and mesmo_codigo["excluido"]:
         raise ErroEstoque(f"O código {codigo} já foi usado por um pijama excluído. Use outro código.")
+    if mesmo_codigo:
+        raise ErroEstoque(f"Já existe um pijama com o código {codigo}. Digite outro código.")
+    _recusar_pijama_repetido(modelo, tamanho, cor)
 
     conexao = conectar()
     try:
@@ -664,21 +573,46 @@ def cadastrar_produto(modelo, tamanho, cor, quantidade_inicial, usuario, codigo=
             _gravar_movimentacao(conexao, "produto", codigo, "entrada", quantidade,
                                  "estoque_inicial", usuario)
         conexao.commit()
-    except sqlite3.IntegrityError:
-        # IntegrityError aqui = violou o UNIQUE do código (já existe)
+    except sqlite3.IntegrityError as erro:
         conexao.rollback()
-        raise ErroEstoque(f"Já existe um pijama com o código {codigo}. Digite outro código.")
+        # Segunda proteção: outro computador cadastrou o mesmo pijama ou código
+        # no mesmo instante, e o UNIQUE do banco recusou
+        if "UNIQUE" in str(erro):
+            raise ErroEstoque(f"Este pijama ou o código {codigo} acabou de ser cadastrado. Confira a lista.")
+        raise  # qualquer outra regra do banco: é um erro de programação, não do usuário
     finally:
         conexao.close()
     return codigo
 
 
+def _chave_do_pijama(modelo, tamanho, cor):
+    """('Coração ', 'm', 'Azul  Claro') -> ('CORACAO', 'M', 'AZUL CLARO').
+    Ignora maiúsculas, acentos e espaços a mais, para comparar dois pijamas."""
+    return tuple(" ".join(normalizar_texto(texto).split()) for texto in (modelo, tamanho, cor))
+
+
+def _recusar_pijama_repetido(modelo, tamanho, cor, codigo_atual=None):
+    """Erro se já existe outro pijama (não excluído) com o mesmo modelo + tamanho + cor.
+
+    O banco também recusa (índice idx_produto_unico, ver migracoes.py), mas só
+    compara sem diferenciar maiúsculas. Aqui também "Coração" = "Coracao", e a
+    mensagem diz qual é o pijama que já existe.
+    """
+    procurado = _chave_do_pijama(modelo, tamanho, cor)
+    for p in listar_produtos():
+        if p["codigo"] != codigo_atual and _chave_do_pijama(p["modelo"], p["tamanho"], p["cor"]) == procurado:
+            if p["ativo"]:
+                raise ErroEstoque(f"Este pijama já está cadastrado: {p['codigo']}.")
+            raise ErroEstoque(f"Este pijama já está cadastrado como {p['codigo']}, que está desativado. "
+                              "Reative ele em vez de cadastrar de novo.")
+
+
 def cadastrar_rolo(tipo_tecido, cor, metragem, usuario, limite_baixo=""):
     """Cadastra um rolo novo e grava a entrada da metragem.
 
-    O código é gerado a partir do id: id 1 -> 'RL-000001'.
-    Como o id só existe depois do INSERT, fazemos INSERT e logo depois UPDATE,
-    tudo na mesma transação.
+    O código é calculado pelo banco a partir do id: id 1 -> 'RL-000001'
+    (coluna gerada, ver migracoes.py). A entrada da metragem é gravada na
+    mesma transação.
     limite_baixo: com quantos metros (ou menos) ele aparece como "quase acabando".
     Devolve o código do rolo.
     """
@@ -694,8 +628,10 @@ def cadastrar_rolo(tipo_tecido, cor, metragem, usuario, limite_baixo=""):
                VALUES (?, ?, ?, ?)""",
             (tipo_tecido, cor, metragem, limite_baixo),
         )
-        codigo = f"{PREFIXO_ROLO}{cursor.lastrowid:06d}"  # :06d = 6 dígitos, completando com zeros
-        conexao.execute("UPDATE rolos_tecido SET codigo = ? WHERE id = ?", (codigo, cursor.lastrowid))
+        # O código (RL-000001) é calculado pelo próprio banco a partir do id
+        codigo = conexao.execute(
+            "SELECT codigo FROM rolos_tecido WHERE id = ?", (cursor.lastrowid,)
+        ).fetchone()["codigo"]
         _gravar_movimentacao(conexao, "rolo", codigo, "entrada", metragem, "rolo_novo", usuario)
         conexao.commit()
     except Exception:
@@ -713,15 +649,21 @@ def editar_produto(codigo, modelo, tamanho, cor, limite_baixo=None):
     A QUANTIDADE também não: saldo só muda por movimentação.
     limite_baixo=None mantém o limite que já estava.
     """
+    modelo = limpar_texto(modelo, "modelo")
+    tamanho = limpar_texto(tamanho, "tamanho").upper()
+    cor = limpar_texto(cor, "cor")
     novo_limite = None if limite_baixo is None else converter_limite_baixo(limite_baixo)
+    _recusar_pijama_repetido(modelo, tamanho, cor, codigo_atual=codigo)
     # COALESCE(?, limite_baixo): se o novo limite for None (NULL), fica o atual
-    alteradas = executar(
-        """UPDATE produtos SET modelo = ?, tamanho = ?, cor = ?,
-                               limite_baixo = COALESCE(?, limite_baixo)
-           WHERE codigo = ?""",
-        (limpar_texto(modelo, "modelo"), limpar_texto(tamanho, "tamanho").upper(),
-         limpar_texto(cor, "cor"), novo_limite, codigo),
-    )
+    try:
+        alteradas = executar(
+            """UPDATE produtos SET modelo = ?, tamanho = ?, cor = ?,
+                                   limite_baixo = COALESCE(?, limite_baixo)
+               WHERE codigo = ? AND excluido = 0""",
+            (modelo, tamanho, cor, novo_limite, codigo),
+        )
+    except sqlite3.IntegrityError:
+        raise ErroEstoque("Já existe outro pijama com este modelo, tamanho e cor.")
     if alteradas == 0:
         raise ErroEstoque(f"Pijama {codigo} não encontrado.")
 
@@ -733,35 +675,31 @@ def editar_rolo(codigo, tipo_tecido, cor, limite_baixo=None):
     alteradas = executar(
         """UPDATE rolos_tecido SET tipo_tecido = ?, cor = ?,
                                    limite_baixo = COALESCE(?, limite_baixo)
-           WHERE codigo = ?""",
+           WHERE codigo = ? AND excluido = 0""",
         (limpar_texto(tipo_tecido, "tipo de tecido"), limpar_texto(cor, "cor"), novo_limite, codigo),
     )
     if alteradas == 0:
         raise ErroEstoque(f"Rolo {codigo} não encontrado.")
 
 
-def _codigo_tem_historico(codigo):
-    return consultar_um("SELECT 1 FROM movimentacoes WHERE codigo_item = ? LIMIT 1", (codigo,)) is not None
-
-
 def excluir_item(codigo):
-    """Exclui de vez um pijama ou rolo. Só funciona se ele já estiver DESATIVADO
+    """Exclui um pijama ou rolo. Só funciona se ele já estiver DESATIVADO
     (assim ninguém exclui um item em uso por engano, com um clique só).
 
-    As movimentações dele NÃO são apagadas: o histórico e os relatórios continuam
-    corretos, e o item aparece lá como "(item excluído)".
+    É uma exclusão LÓGICA: a linha continua no banco com excluido = 1. O item
+    some de todas as telas e não volta, mas o histórico e os relatórios
+    continuam ligados a ele (aparece como "(excluído)"), e o código dele
+    nunca é reaproveitado. O próprio banco impede o DELETE de verdade.
     """
     item = buscar_item(codigo)
     if item is None:
         raise ErroEstoque(f"Código {codigo} não encontrado.")
     if item["ativo"]:
         raise ErroEstoque(f"Desative {item['codigo']} antes de excluir.")
-    if item["tipo_item"] == "produto":
-        executar("DELETE FROM produtos WHERE codigo = ? AND ativo = 0", (item["codigo"],))
-    else:
-        # Rolos não reaproveitam código: o número vem do id, que nunca se repete
-        # (AUTOINCREMENT), então não há risco de misturar históricos.
-        executar("DELETE FROM rolos_tecido WHERE codigo = ? AND ativo = 0", (item["codigo"],))
+    tabela = "produtos" if item["tipo_item"] == "produto" else "rolos_tecido"
+    # O nome da tabela vem do próprio código (nunca do usuário), por isso a f-string é segura
+    executar(f"UPDATE {tabela} SET excluido = 1 WHERE codigo = ? AND ativo = 0 AND excluido = 0",
+             (item["codigo"],))
     return item
 
 
@@ -776,9 +714,9 @@ def definir_item_ativo(codigo, ativo):
         raise ErroEstoque(f"Código {codigo} não encontrado.")
     valor = 1 if ativo else 0
     if item["tipo_item"] == "produto":
-        executar("UPDATE produtos SET ativo = ? WHERE codigo = ?", (valor, item["codigo"]))
+        executar("UPDATE produtos SET ativo = ? WHERE codigo = ? AND excluido = 0", (valor, item["codigo"]))
     else:
-        executar("UPDATE rolos_tecido SET ativo = ? WHERE codigo = ?", (valor, item["codigo"]))
+        executar("UPDATE rolos_tecido SET ativo = ? WHERE codigo = ? AND excluido = 0", (valor, item["codigo"]))
     return item
 
 
@@ -873,9 +811,9 @@ def relatorio_consumo_tecido_por_mes():
     """Metros cortados por mês, por tipo de tecido e cor.
 
     substr(data, 1, 7) pega só 'AAAA-MM' da data, para agrupar por mês.
-    LEFT JOIN (e não JOIN): cortes de rolos que foram EXCLUÍDOS continuam
-    somando, agrupados como "(item excluído)" — assim o total de um mês
-    passado nunca muda depois que um rolo é excluído.
+    Rolos excluídos continuam no banco (exclusão lógica), então os cortes deles
+    continuam somando com o nome certo: o total de um mês passado nunca muda.
+    O LEFT JOIN e o COALESCE são só uma segurança a mais.
     """
     return consultar(
         """SELECT substr(m.data, 1, 7) AS mes,
@@ -891,7 +829,7 @@ def relatorio_consumo_tecido_por_mes():
 
 
 def relatorio_pijamas_vendidos_por_mes():
-    """Pijamas vendidos por mês, por modelo (LEFT JOIN pelo mesmo motivo do relatório acima)."""
+    """Pijamas vendidos por mês, por modelo (excluídos contam, como no relatório acima)."""
     return consultar(
         """SELECT substr(m.data, 1, 7) AS mes,
                   COALESCE(p.modelo, '(item excluído)') AS modelo,
@@ -902,3 +840,60 @@ def relatorio_pijamas_vendidos_por_mes():
            GROUP BY mes, modelo
            ORDER BY mes DESC, unidades DESC"""
     )
+
+
+# =====================================================================
+# Conferência do banco (mostrada na tela de Administração)
+# =====================================================================
+
+def verificar_integridade():
+    """Confere se o banco está saudável. Devolve a lista de problemas
+    encontrados (lista vazia = tudo certo).
+
+    As regras do migracoes.py impedem quase todos estes problemas na hora
+    de gravar. A conferência existe para avisar se alguém mexer no arquivo
+    do banco por fora do sistema, ou se o disco corromper o arquivo.
+    """
+    import migracoes
+
+    problemas = []
+    versao = migracoes.versao_do_banco()
+    if versao != migracoes.VERSAO_ATUAL:
+        problemas.append(f"O banco está na versão {versao}, mas o sistema espera a {migracoes.VERSAO_ATUAL}.")
+
+    # quick_check: o próprio SQLite confere se o arquivo não está corrompido
+    resultado = consultar_um("PRAGMA quick_check")["quick_check"]
+    if resultado != "ok":
+        problemas.append(f"O arquivo do banco está danificado ({resultado}). Restaure um backup.")
+
+    # Movimentação de usuário que não existe (chave estrangeira)
+    for linha in consultar("PRAGMA foreign_key_check"):
+        problemas.append(f"Movimentação nº {linha['rowid']} feita por um usuário que não existe.")
+
+    # Movimentação que não aponta para nenhum item
+    for linha in consultar("""
+            SELECT m.id, m.codigo_item FROM movimentacoes m
+            WHERE NOT EXISTS (SELECT 1 FROM produtos p
+                              WHERE m.tipo_item = 'produto' AND p.codigo = m.codigo_item)
+              AND NOT EXISTS (SELECT 1 FROM rolos_tecido r
+                              WHERE m.tipo_item = 'rolo' AND r.codigo = m.codigo_item)"""):
+        problemas.append(f"Movimentação nº {linha['id']} aponta para {linha['codigo_item']}, que não existe.")
+
+    # O saldo guardado precisa ser igual à soma do histórico (entradas - saídas)
+    soma_do_historico = "COALESCE(SUM(CASE m.tipo WHEN 'entrada' THEN m.quantidade ELSE -m.quantidade END), 0)"
+    for linha in consultar(f"""
+            SELECT p.codigo, p.quantidade AS saldo, {soma_do_historico} AS historico
+            FROM produtos p
+            LEFT JOIN movimentacoes m ON m.tipo_item = 'produto' AND m.codigo_item = p.codigo
+            GROUP BY p.id
+            HAVING saldo <> historico"""):
+        problemas.append(f"{linha['codigo']}: saldo {linha['saldo']:g} un., mas o histórico soma {linha['historico']:g}.")
+    for linha in consultar(f"""
+            SELECT r.codigo, r.metragem_atual AS saldo, {soma_do_historico} AS historico
+            FROM rolos_tecido r
+            LEFT JOIN movimentacoes m ON m.tipo_item = 'rolo' AND m.codigo_item = r.codigo
+            GROUP BY r.id
+            HAVING ROUND(saldo, 2) <> ROUND(historico, 2)"""):
+        problemas.append(f"{linha['codigo']}: saldo {linha['saldo']:g} m, mas o histórico soma {linha['historico']:g}.")
+
+    return problemas

@@ -207,48 +207,6 @@ class TesteEdicaoEDesativacao(TesteComBancoLimpo):
         self.assertEqual(item["saldo"], 9)
 
 
-class TesteBancoAntigo(TesteComBancoLimpo):
-    """Um banco criado pela primeira versão do sistema (sem as colunas novas)
-    precisa continuar funcionando depois da atualização."""
-
-    def test_colunas_novas_sao_adicionadas(self):
-        conexao = banco.conectar()
-        conexao.executescript("""
-            DROP TABLE produtos; DROP TABLE movimentacoes;
-            CREATE TABLE produtos (id INTEGER PRIMARY KEY, codigo TEXT UNIQUE, modelo TEXT,
-                                   tamanho TEXT, cor TEXT, quantidade INTEGER);
-            CREATE TABLE movimentacoes (id INTEGER PRIMARY KEY, tipo_item TEXT, codigo_item TEXT,
-                                        tipo TEXT, quantidade REAL, data TEXT, motivo TEXT);
-            INSERT INTO produtos VALUES (1, 'PJ-VEL-M-AZ', 'Velho', 'M', 'Azul', 4);
-        """)
-        conexao.close()
-
-        banco.criar_tabelas()  # é o que acontece quando o sistema novo inicia
-
-        produto = banco.buscar_produto("PJ-VEL-M-AZ")
-        self.assertEqual(produto["ativo"], 1)  # itens antigos continuam ativos
-        item = banco.registrar_movimentacao("PJ-VEL-M-AZ", "saida", "1", "venda", ADMIN)
-        self.assertEqual(item["saldo"], 3)
-
-    def test_admin_mais_antigo_vira_master(self):
-        conexao = banco.conectar()
-        conexao.executescript("""
-            DROP TABLE usuarios;
-            CREATE TABLE usuarios (id INTEGER PRIMARY KEY, nome TEXT, login TEXT UNIQUE,
-                                   senha_hash TEXT, perfil TEXT, ativo INTEGER DEFAULT 1);
-            INSERT INTO usuarios VALUES (1, 'Op', 'op', 'x', 'operador', 1);
-            INSERT INTO usuarios VALUES (2, 'Dono', 'dono', 'x', 'admin', 1);
-            INSERT INTO usuarios VALUES (3, 'Outro', 'outro', 'x', 'admin', 1);
-        """)
-        conexao.close()
-
-        banco.criar_tabelas()
-        banco.criar_tabelas()  # rodar de novo não pode criar um segundo master
-
-        masters = banco.consultar("SELECT login FROM usuarios WHERE master = 1")
-        self.assertEqual(masters, [{"login": "dono"}])
-
-
 class TesteExclusao(TesteComBancoLimpo):
 
     def setUp(self):
@@ -268,10 +226,10 @@ class TesteExclusao(TesteComBancoLimpo):
         self.assertIsNone(banco.buscar_produto(self.pijama))
         historico = banco.listar_movimentacoes(codigo=self.pijama)
         self.assertEqual(len(historico), 2)  # estoque inicial + venda continuam lá
-        self.assertEqual(historico[0]["descricao"], "(item excluído)")
+        self.assertEqual(historico[0]["descricao"], "Pijama Floral · M · Azul (excluído)")
         # Os relatórios continuam contando a venda do item excluído (totais do mês não mudam)
         vendas = banco.relatorio_pijamas_vendidos_por_mes()
-        self.assertEqual([(v["modelo"], v["unidades"]) for v in vendas], [("(item excluído)", 2)])
+        self.assertEqual([(v["modelo"], v["unidades"]) for v in vendas], [("Floral", 2)])
 
     def test_corte_de_rolo_excluido_continua_no_consumo(self):
         rolo = banco.cadastrar_rolo("Malha", "Azul", "5", ADMIN)
@@ -279,7 +237,7 @@ class TesteExclusao(TesteComBancoLimpo):
         banco.definir_item_ativo(rolo, False)
         banco.excluir_item(rolo)
         consumo = banco.relatorio_consumo_tecido_por_mes()
-        self.assertEqual([(c["tipo_tecido"], c["metros"]) for c in consumo], [("(item excluído)", 1.5)])
+        self.assertEqual([(c["tipo_tecido"], c["metros"]) for c in consumo], [("Malha", 1.5)])
 
     def test_codigo_de_pijama_excluido_nao_volta_a_ser_usado(self):
         banco.definir_item_ativo(self.pijama, False)

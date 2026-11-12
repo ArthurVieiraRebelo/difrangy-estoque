@@ -4,6 +4,23 @@
 {% block conteudo %}
 <h1>Administração</h1>
 
+{# Conferência do banco (banco.verificar_integridade): avisa se algo estiver errado #}
+<section class="bloco">
+  <h2>Conferência do banco de dados</h2>
+  {% if problemas_do_banco %}
+    <p class="aviso aviso-erro">Foram encontrados {{ problemas_do_banco|length }} problema(s). Faça um backup e verifique:</p>
+    <ul>
+      {% for problema in problemas_do_banco %}<li>{{ problema }}</li>{% endfor %}
+    </ul>
+  {% else %}
+    <p class="dica">
+      ✔ Tudo certo (estrutura versão {{ versao_do_banco }}): o arquivo está íntegro,
+      toda movimentação aponta para um item e um usuário que existem, e o saldo
+      de cada item é igual à soma do histórico dele.
+    </p>
+  {% endif %}
+</section>
+
 {# Configurações do sistema: só o master (dono do sistema) vê e altera #}
 {% if eh_master %}
 <section class="bloco">

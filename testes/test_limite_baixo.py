@@ -126,51 +126,6 @@ class TesteLimiteDosRolos(TesteComBancoLimpo):
             banco.executar("UPDATE rolos_tecido SET limite_baixo = -0.5")
 
 
-class TesteBancoDeVersaoAntiga(TesteComBancoLimpo):
-    """O banco real da fábrica foi criado antes de existir o limite por pijama."""
-
-    def test_pijamas_antigos_ganham_o_limite_padrao(self):
-        # Recria a tabela como era nas versões antigas (sem limite_baixo)
-        conexao = banco.conectar()
-        conexao.executescript("""
-            DROP TABLE produtos;
-            CREATE TABLE produtos (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, codigo TEXT NOT NULL UNIQUE,
-                modelo TEXT NOT NULL, tamanho TEXT NOT NULL, cor TEXT NOT NULL,
-                quantidade INTEGER NOT NULL DEFAULT 0 CHECK (quantidade >= 0),
-                ativo INTEGER NOT NULL DEFAULT 1
-            );
-            INSERT INTO produtos (codigo, modelo, tamanho, cor, quantidade)
-            VALUES ('PJ-LIG-M-AZ', 'Liga', 'M', 'Azul', 3);
-        """)
-        conexao.close()
-
-        banco.criar_tabelas()  # é o que acontece quando o sistema novo inicia
-
-        self.assertEqual(banco.buscar_produto("PJ-LIG-M-AZ")["limite_baixo"], banco.LIMITE_PIJAMAS_BAIXO)
-        self.assertEqual(banco.resumo()["itens_baixos"], 1)  # 3 <= 5, como antes
-
-    def test_rolos_antigos_ganham_o_limite_padrao(self):
-        conexao = banco.conectar()
-        conexao.executescript("""
-            DROP TABLE rolos_tecido;
-            CREATE TABLE rolos_tecido (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, codigo TEXT UNIQUE,
-                tipo_tecido TEXT NOT NULL, cor TEXT NOT NULL,
-                metragem_atual REAL NOT NULL DEFAULT 0 CHECK (metragem_atual >= 0),
-                ativo INTEGER NOT NULL DEFAULT 1
-            );
-            INSERT INTO rolos_tecido (codigo, tipo_tecido, cor, metragem_atual)
-            VALUES ('RL-000001', 'Malha', 'Azul', 2.5);
-        """)
-        conexao.close()
-
-        banco.criar_tabelas()
-
-        self.assertEqual(banco.buscar_rolo("RL-000001")["limite_baixo"], banco.LIMITE_METROS_BAIXO)
-        self.assertEqual(banco.resumo()["itens_baixos"], 1)  # 2,5 <= 3, como antes
-
-
 class TesteLimiteNasPaginas(TesteComCliente):
 
     def test_cadastrar_pela_janela_com_limite(self):

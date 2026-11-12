@@ -14,6 +14,8 @@ from testes import ADMIN, SENHA_PADRAO, TesteComBancoLimpo, TesteComCliente
 
 class TestePrimeiroAcesso(TesteComBancoLimpo):
 
+    criar_usuarios_de_mentira = False  # o primeiro acesso só aparece com o banco sem usuários
+
     def setUp(self):
         super().setUp()
         from app import app

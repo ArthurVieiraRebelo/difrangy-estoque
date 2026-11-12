@@ -10,6 +10,8 @@ from testes import ADMIN, SENHA_PADRAO, TesteComBancoLimpo, TesteComCliente
 
 class TestePrimeiroAcessoViraMaster(TesteComBancoLimpo):
 
+    criar_usuarios_de_mentira = False  # o primeiro acesso só aparece com o banco sem usuários
+
     def test_quem_faz_o_primeiro_acesso_e_o_master(self):
         from app import app
         cliente = app.test_client()
@@ -112,7 +114,7 @@ class TesteExclusaoPelasTelas(TesteComCliente):
         self.assertTrue(resposta.location.endswith("/produtos"))
         self.assertIsNone(banco.buscar_produto(self.pijama))
         html = self.admin.get(f"/movimentacoes?codigo={self.pijama}").get_data(as_text=True)
-        self.assertIn("(item excluído)", html)
+        self.assertIn("Pijama Floral · M · Azul (excluído)", html)
 
     def test_excluir_item_ativo_e_recusado(self):
         self.admin.post(f"/itens/{self.pijama}/excluir")

@@ -29,6 +29,7 @@ import backup
 import banco
 import configuracoes
 import exportacao
+import migracoes
 import usuarios
 from etiquetas import gerar_png_codigo_barras, gerar_png_qrcode
 
@@ -61,8 +62,15 @@ app.permanent_session_lifetime = timedelta(hours=12)  # o login dura um turno
 # tenta enviar um formulário para cá. Protege contra o ataque chamado CSRF.
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
-# Cria as tabelas (se ainda não existirem) assim que o sistema inicia
-banco.criar_tabelas()
+# Cria as tabelas (banco novo) ou atualiza um banco antigo assim que o sistema inicia.
+# Se a atualização não puder ser feita, nada é alterado e o sistema não abre.
+try:
+    banco.criar_tabelas()
+except migracoes.ErroMigracao as erro:
+    raise SystemExit(
+        f"\nNão foi possível atualizar o banco de dados:\n  {erro}\n"
+        "Nenhum dado foi alterado. Corrija o problema acima e abra o sistema de novo."
+    )
 
 
 # =====================================================================
@@ -538,6 +546,8 @@ def admin():
         # Para a seção de configurações (que só aparece para o master)
         tipos_etiqueta=configuracoes.TIPOS_ETIQUETA,
         etiqueta_liberada=configuracoes.etiqueta_liberada,
+        problemas_do_banco=banco.verificar_integridade(),
+        versao_do_banco=migracoes.VERSAO_ATUAL,
     )
 
 

@@ -25,7 +25,9 @@ import backup    # noqa: E402  (precisa vir depois das linhas acima)
 import banco     # noqa: E402
 import usuarios  # noqa: E402
 
-# Usuários "de mentira" para as funções do banco.py, que só olham login e perfil
+# Usuários "de mentira" para as funções do banco.py, que só olham login e perfil.
+# Eles também são gravados (desativados) no banco de cada teste: o banco exige
+# que o usuário de cada movimentação exista em "usuarios" (chave estrangeira).
 ADMIN = {"login": "admin", "perfil": "admin"}
 OPERADOR = {"login": "operador", "perfil": "operador"}
 
@@ -35,12 +37,23 @@ SENHA_PADRAO = "senha123"
 class TesteComBancoLimpo(unittest.TestCase):
     """Classe base: antes de CADA teste, cria um banco vazio só para ele."""
 
+    # As classes que testam o primeiro acesso precisam de um banco SEM nenhum usuário
+    criar_usuarios_de_mentira = True
+
     def setUp(self):
         self.pasta_temporaria = tempfile.TemporaryDirectory()
         pasta = Path(self.pasta_temporaria.name)
         banco.CAMINHO_BANCO = pasta / "teste.db"
         backup.PASTA_BACKUPS = pasta / "backups"
         banco.criar_tabelas()
+        if self.criar_usuarios_de_mentira:
+            # Desativados: existem para o banco, mas ninguém entra com eles e
+            # eles não contam como "administrador ativo" nas regras de usuários
+            for usuario in (ADMIN, OPERADOR):
+                banco.executar(
+                    "INSERT INTO usuarios (nome, login, senha_hash, perfil, ativo) VALUES (?, ?, '-', ?, 0)",
+                    (usuario["login"], usuario["login"], usuario["perfil"]),
+                )
 
     def tearDown(self):
         self.pasta_temporaria.cleanup()  # apaga a pasta e o banco do teste
