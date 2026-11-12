@@ -383,6 +383,12 @@ def excluir_item(codigo):
 def movimentacoes():
     # request.args = parâmetros da URL, ex: /movimentacoes?codigo=PJ-FLO-M-AZ
     codigo = request.args.get("codigo", "").strip().upper()
+    if codigo:
+        # O filtro também aceita o código digitado sem hífen ("pjflomaz")
+        try:
+            codigo = banco.resolver_codigo_digitado(codigo) or codigo
+        except banco.ErroEstoque as erro:
+            flash(str(erro), "erro")
     return render_template(
         "movimentacoes.html",
         movimentacoes=banco.listar_movimentacoes(limite=500, codigo=codigo),
@@ -608,15 +614,29 @@ def baixar_backup(nome):
 # API (JSON) — usada pelo JavaScript, sem recarregar a página
 # =====================================================================
 
-@app.route("/api/item/<codigo>")
+# <path:codigo> aceita também "/" no código digitado (ex: "pj/flo/m/az");
+# com <codigo> simples, a barra quebraria o endereço.
+@app.route("/api/item/<path:codigo>")
 def api_item(codigo):
-    """Diz o que é o código bipado (pijama ou rolo) e o saldo atual."""
-    item = banco.buscar_item(codigo)
+    """Diz o que é o código bipado (pijama ou rolo) e o saldo atual.
+    Aceita o código digitado de qualquer jeito: "pjflomaz" acha PJ-FLO-M-AZ."""
+    try:
+        item = banco.buscar_item_digitado(codigo)
+    except banco.ErroEstoque as erro:  # o texto combina com mais de um código
+        return jsonify(ok=False, erro=str(erro)), 400
     if item is None:
         return jsonify(ok=False, erro=f"Código {codigo.upper()} não encontrado."), 404
     if not item["ativo"]:
         return jsonify(ok=False, erro=f"{item['descricao']} ({item['codigo']}) está desativado."), 400
     return jsonify(ok=True, item=item)
+
+
+@app.route("/api/sugestoes")
+def api_sugestoes():
+    """Sugestões para o campo de código da tela Bipar, enquanto a pessoa digita.
+    Ex: /api/sugestoes?q=floral az  ->  {"ok": true, "sugestoes": [...]}"""
+    texto = request.args.get("q", "")[:60]  # limita o tamanho do que vem da tela
+    return jsonify(ok=True, sugestoes=banco.sugerir_itens(texto))
 
 
 @app.route("/api/movimentar", methods=["POST"])

@@ -31,6 +31,8 @@ O estoque nunca fica negativo. A conferência do saldo é feita dentro do própr
 
 Leitores de código de barras USB funcionam como um teclado: digitam o código e enviam `Enter`. A tela de leitura aproveita isso com um campo de texto sempre focado dentro de um formulário. O JavaScript intercepta o envio, manda o código para a API com `fetch()` e mostra o resultado na própria página. Um sinal sonoro indica sucesso ou erro, para quem está bipando sem olhar para a tela.
 
+O mesmo campo aceita digitação manual. Enquanto a pessoa digita, uma lista sugere os itens que combinam pelo código ou pela descrição ("floral azul" encontra os pijamas Floral azuis), e as setas ↑ ↓ com Enter escolhem um item. A digitação é tolerante: letras minúsculas, acentos e a falta de hífens são corrigidos automaticamente (`pjflomaz` → `PJ-FLO-M-AZ`, `rl12` → `RL-000012`). Essa correção acontece no servidor, então vale também para quem usa a API. O Enter só seleciona uma sugestão quando ela foi escolhida com as setas, para não interferir no leitor.
+
 | Item bipado | O que acontece |
 |---|---|
 | Pijama | A movimentação é registrada na hora, com a quantidade e o motivo selecionados. |

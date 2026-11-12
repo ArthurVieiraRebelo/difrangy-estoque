@@ -331,21 +331,138 @@ def buscar_item(codigo):
 
     produto = buscar_produto(codigo)
     if produto:
-        produto["tipo_item"] = "produto"
-        produto["descricao"] = f"Pijama {produto['modelo']} · {produto['tamanho']} · {produto['cor']}"
-        produto["saldo"] = produto["quantidade"]
-        produto["unidade"] = "un."
-        return produto
+        return _completar_produto(produto)
 
     rolo = buscar_rolo(codigo)
     if rolo:
-        rolo["tipo_item"] = "rolo"
-        rolo["descricao"] = f"Rolo {rolo['tipo_tecido']} · {rolo['cor']}"
-        rolo["saldo"] = rolo["metragem_atual"]
-        rolo["unidade"] = "m"
-        return rolo
+        return _completar_rolo(rolo)
 
     return None
+
+
+def _completar_produto(produto):
+    """Acrescenta ao pijama os campos usados nas telas (tipo, descrição, saldo, unidade)."""
+    produto["tipo_item"] = "produto"
+    produto["descricao"] = f"Pijama {produto['modelo']} · {produto['tamanho']} · {produto['cor']}"
+    produto["saldo"] = produto["quantidade"]
+    produto["unidade"] = "un."
+    return produto
+
+
+def _completar_rolo(rolo):
+    """Acrescenta ao rolo os campos usados nas telas (tipo, descrição, saldo, unidade)."""
+    rolo["tipo_item"] = "rolo"
+    rolo["descricao"] = f"Rolo {rolo['tipo_tecido']} · {rolo['cor']}"
+    rolo["saldo"] = rolo["metragem_atual"]
+    rolo["unidade"] = "m"
+    return rolo
+
+
+# ---------------------------------------------------------------------
+# Código digitado "do jeito que der" -> código oficial
+# ---------------------------------------------------------------------
+# Quem digita à mão pode escrever "pjflomaz", "pj flo m az" ou "PJ.FLO.M.AZ".
+# A ideia: comparar só as LETRAS e NÚMEROS ("forma compacta"), ignorando
+# maiúsculas/minúsculas, acentos, hífens, espaços e pontos.
+
+def normalizar_texto(texto):
+    """'Coração azul' -> 'CORACAO AZUL' (maiúsculo e sem acento), para comparar textos."""
+    return unicodedata.normalize("NFKD", str(texto)).encode("ascii", "ignore").decode().upper()
+
+
+def compactar_codigo(texto):
+    """Só letras e números, em maiúsculo: 'pj-flo m.az' -> 'PJFLOMAZ'."""
+    return "".join(c for c in normalizar_texto(texto) if c.isalnum())
+
+
+def resolver_codigo_digitado(texto):
+    """Descobre qual código OFICIAL a pessoa quis digitar.
+
+    Tenta, nesta ordem:
+    1. o texto exato (como o leitor de código de barras manda): 'PJ-FLO-M-AZ';
+    2. rolo só pelo número: 'rl12' ou 'RL 12' -> 'RL-000012';
+    3. um código cuja forma compacta seja igual: 'pjflomaz' -> 'PJ-FLO-M-AZ'.
+
+    Devolve o código oficial, ou None se nenhum item combinar.
+    """
+    exato = str(texto).strip().upper()
+    if exato and buscar_item(exato):
+        return exato
+
+    compacto = compactar_codigo(texto)
+    if not compacto or len(compacto) > TAMANHO_MAXIMO_CODIGO:
+        return None
+
+    prefixo_rolo = compactar_codigo(PREFIXO_ROLO)   # "RL"
+    numero = compacto[len(prefixo_rolo):]
+    if compacto.startswith(prefixo_rolo) and numero.isdigit() and len(numero) <= 6:
+        codigo_rolo = f"{PREFIXO_ROLO}{int(numero):06d}"   # 12 -> RL-000012
+        if buscar_rolo(codigo_rolo):
+            return codigo_rolo
+
+    # REPLACE(codigo, '-', '') tira os hífens do código guardado no banco
+    # (os códigos só têm letras, números e hífen — ver limpar_codigo)
+    encontrados = consultar(
+        """SELECT codigo FROM produtos     WHERE REPLACE(codigo, '-', '') = ?
+           UNION
+           SELECT codigo FROM rolos_tecido WHERE REPLACE(codigo, '-', '') = ?""",
+        (compacto, compacto),
+    )
+    if len(encontrados) > 1:
+        lista = ", ".join(linha["codigo"] for linha in encontrados)
+        raise ErroEstoque(f"'{exato}' combina com mais de um código ({lista}). Digite com os hífens.")
+    return encontrados[0]["codigo"] if encontrados else None
+
+
+def buscar_item_digitado(texto):
+    """Igual ao buscar_item, mas aceita o código digitado de qualquer jeito."""
+    codigo = resolver_codigo_digitado(texto)
+    return buscar_item(codigo) if codigo else None
+
+
+def sugerir_itens(texto, limite=8):
+    """Sugestões para o campo de código da tela Bipar, enquanto a pessoa digita.
+
+    Cada palavra digitada precisa aparecer no código OU na descrição do item:
+    'flo az' acha PJ-FLO-M-AZ; 'floral azul' também; 'malha' acha os rolos de malha.
+    Só itens ativos. Os que combinam pelo código aparecem primeiro.
+    """
+    palavras = [compactar_codigo(p) for p in normalizar_texto(texto).split()]
+    palavras = [p for p in palavras if p]
+    if not palavras:
+        return []
+    digitado_compacto = compactar_codigo(texto)
+    codigo_resolvido = None
+    try:
+        codigo_resolvido = resolver_codigo_digitado(texto)
+    except ErroEstoque:
+        pass  # ambíguo: as sugestões mostram as opções para a pessoa escolher
+
+    itens = [_completar_produto(p) for p in listar_produtos(somente_ativos=True)]
+    itens += [_completar_rolo(r) for r in listar_rolos(somente_ativos=True)]
+
+    resultado = []
+    for item in itens:
+        codigo_compacto = compactar_codigo(item["codigo"])
+        onde_procurar = codigo_compacto + " " + compactar_codigo(item["descricao"])
+        if item["codigo"] != codigo_resolvido and not all(p in onde_procurar for p in palavras):
+            continue
+        # Ordem: código exato > código começa com o digitado > código contém > só descrição
+        if item["codigo"] == codigo_resolvido:
+            ordem = 0
+        elif codigo_compacto.startswith(digitado_compacto):
+            ordem = 1
+        elif digitado_compacto in codigo_compacto:
+            ordem = 2
+        else:
+            ordem = 3
+        resultado.append((ordem, item["codigo"], item))
+
+    resultado.sort(key=lambda trio: (trio[0], trio[1]))
+    return [
+        {campo: item[campo] for campo in ("codigo", "descricao", "saldo", "unidade", "tipo_item")}
+        for _, _, item in resultado[:limite]
+    ]
 
 
 def listar_produtos(somente_ativos=False):
@@ -610,13 +727,17 @@ def registrar_movimentacao(codigo, tipo, quantidade, motivo, usuario):
 
     Devolve o item com o saldo já atualizado (para mostrar na tela).
     """
-    codigo = limpar_codigo(codigo)
+    digitado = str(codigo).strip()
+    if not digitado:
+        raise ErroEstoque("Informe um código.")
     if tipo not in ("entrada", "saida"):
         raise ErroEstoque("Escolha entrada ou saída.")
 
-    item = buscar_item(codigo)
+    # Aceita o código digitado de qualquer jeito ("pjflomaz") e acha o oficial
+    item = buscar_item_digitado(digitado)
     if item is None:
-        raise ErroEstoque(f"Código {codigo} não encontrado.")
+        raise ErroEstoque(f"Código {digitado.upper()} não encontrado.")
+    codigo = item["codigo"]  # daqui para baixo, sempre o código oficial (com hífens)
     if not item["ativo"]:
         raise ErroEstoque(f"{item['descricao']} ({codigo}) está desativado.")
 

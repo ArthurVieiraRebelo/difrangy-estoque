@@ -26,10 +26,18 @@
       </label>
     </div>
 
-    <label class="campo-codigo">Código de barras
-      <input id="codigo" placeholder="Bipe o código aqui…" autofocus>
-    </label>
+    <label class="campo-codigo" for="codigo">Código</label>
+    {# A lista de sugestões fica logo abaixo do campo (ver sugestoes.js).
+       spellcheck/autocapitalize: o navegador não "corrige" nem muda o código. #}
+    <div class="campo-com-sugestoes">
+      <input id="codigo" placeholder="Bipe ou digite o código, o modelo ou a cor…" autofocus
+             role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="lista-sugestoes"
+             spellcheck="false" autocapitalize="characters">
+      <ul id="lista-sugestoes" class="lista-sugestoes" role="listbox" aria-label="Sugestões" hidden></ul>
+    </div>
     <p class="dica">
+      Pode digitar sem hífen e em minúsculas (<code>pjflomaz</code> vira <code>PJ-FLO-M-AZ</code>;
+      <code>rl12</code> vira <code>RL-000012</code>). Use ↑ ↓ e Enter para escolher uma sugestão.<br>
       <strong>Pijama:</strong> o estoque é atualizado na hora.
       <strong>Rolo de tecido:</strong> depois de bipar, digite quantos metros e aperte Enter.
     </p>
@@ -76,5 +84,6 @@
 {% block scripts %}
 {# Passa as listas de motivos do Python para o JavaScript #}
 <script>const MOTIVOS_PERMITIDOS = {{ motivos_permitidos|tojson }};</script>
+<script src="{{ url_for('static', filename='js/sugestoes.js') }}"></script>
 <script src="{{ url_for('static', filename='js/bipar.js') }}"></script>
 {% endblock %}

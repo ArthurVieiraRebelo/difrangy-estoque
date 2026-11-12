@@ -362,7 +362,47 @@ a.botao.secundario:hover { background: var(--neutro-hover); }
 .opcao-saida:has(input:checked) { border-color: var(--saida); background: var(--saida-fundo); color: var(--saida); }
 
 .campos-linha { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .9rem; margin-bottom: 1rem; }
-.campo-codigo input { font-size: 1.4rem; padding: .75rem; font-family: ui-monospace, Consolas, monospace; }
+.campo-codigo { margin-bottom: .25rem; }
+
+/* Campo de código + lista de sugestões que abre embaixo dele (sugestoes.js) */
+.campo-com-sugestoes { position: relative; }
+.campo-com-sugestoes input {
+  width: 100%;
+  font-size: 1.4rem;
+  padding: .75rem;
+  font-family: ui-monospace, Consolas, monospace;
+  text-transform: uppercase;   /* aparece em maiúsculas já enquanto digita */
+}
+.campo-com-sugestoes input::placeholder { text-transform: none; font-family: system-ui, sans-serif; font-size: 1.05rem; }
+.lista-sugestoes {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: .3rem;
+  list-style: none;
+  max-height: 20rem;
+  overflow-y: auto;
+  background: var(--superficie);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  box-shadow: var(--sombra);
+}
+.lista-sugestoes [role=option] {
+  display: grid;
+  grid-template-columns: minmax(9rem, auto) 1fr auto;
+  gap: 1rem;
+  align-items: center;
+  padding: .55rem .7rem;
+  border-radius: calc(var(--raio) - 2px);
+  cursor: pointer;
+}
+.lista-sugestoes [role=option]:hover,
+.lista-sugestoes [role=option].destacada { background: var(--selecionado); }
+.sugestao-descricao { color: var(--texto-suave); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sem-sugestao { padding: .55rem .7rem; color: var(--texto-suave); }
 
 .etapa-rolo { border: 2px solid var(--link); }
 .botoes { display: flex; flex-wrap: wrap; gap: .75rem; }

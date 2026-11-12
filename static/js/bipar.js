@@ -22,6 +22,13 @@ const botaoConfirmarRolo = document.getElementById("confirmar-rolo");
 const caixaResultado = document.getElementById("resultado");
 const historico = document.getElementById("historico-bipar");
 
+// Sugestões enquanto digita (ver sugestoes.js). Escolher uma sugestão
+// coloca o código oficial no campo e já envia, como se tivesse bipado.
+const sugestoes = ativarSugestoes(campoCodigo, document.getElementById("lista-sugestoes"), (item) => {
+  campoCodigo.value = item.codigo;
+  formBipar.requestSubmit();
+});
+
 // Rolo que foi bipado e está esperando o funcionário digitar os metros
 let roloAtual = null;
 
@@ -161,7 +168,10 @@ function fecharEtapaRolo() {
 // 1) Código bipado (o leitor aperta Enter, que dispara o "submit" do formulário)
 formBipar.addEventListener("submit", async (evento) => {
   evento.preventDefault(); // NÃO recarregar a página
+  sugestoes.fechar();
 
+  // Vai do jeito que foi digitado; o servidor descobre o código oficial
+  // (ex: "PJFLOMAZ" -> "PJ-FLO-M-AZ") e devolve em dados.item.codigo
   const codigo = campoCodigo.value.trim().toUpperCase();
   campoCodigo.value = ""; // limpa logo, já pronto para o próximo bipe
   if (!codigo) {
@@ -180,7 +190,7 @@ formBipar.addEventListener("submit", async (evento) => {
   if (dados.item.tipo_item === "rolo") {
     abrirEtapaRolo(dados.item); // pergunta os metros
   } else {
-    await movimentar(codigo, campoQuantidade.value, motivoProduto.value);
+    await movimentar(dados.item.codigo, campoQuantidade.value, motivoProduto.value);
     campoQuantidade.value = 1; // volta para 1, para não repetir uma quantidade grande sem querer
     campoCodigo.focus();
   }
